@@ -41,9 +41,9 @@ namespace MorphSyncTogether
         UdpTransport& operator=(const UdpTransport&) = delete;
 
         void ReceiverLoop();
-        void DiscoveryLoop(std::stop_token stopToken);
+        void MaintenanceLoop(std::stop_token stopToken);
         void SendHello();
-        void SendHelloTo(const sockaddr_in& destination);
+        void SendHelloTo(const sockaddr_in& destination, bool useObservedSourcePort);
         bool HandleDiscoveryPacket(std::string_view packet, const sockaddr_in& source);
         void RegisterPeer(
             const sockaddr_in& source,
@@ -52,7 +52,18 @@ namespace MorphSyncTogether
             std::string_view instanceID);
         void TouchPeerFromGameplayPacket(const sockaddr_in& source, std::string_view packet);
         void ExpirePeers();
-        std::vector<sockaddr_in> SnapshotPeers();
+        std::vector<sockaddr_in> SnapshotDestinations(
+            const sockaddr_in* excluded = nullptr);
+        void RelayGameplayPacket(std::string_view packet, const sockaddr_in& source);
+        bool SendPacketTo(
+            std::string_view packet,
+            const sockaddr_in& destination,
+            std::string_view operation);
+        std::optional<sockaddr_in> ResolveRemotePeer(const Config::RemotePeer& peer) const;
+        std::string SignPacket(std::string packet) const;
+        bool AuthenticatePacket(std::string_view packet) const;
+        static std::string RemoveAuthField(std::string_view packet);
+        std::string MarkRelayed(std::string_view packet) const;
 
         static std::string SanitizeField(std::string value);
         static std::optional<std::string> ReadField(std::string_view packet, std::string_view key);
@@ -61,11 +72,10 @@ namespace MorphSyncTogether
         Config _config{};
         SOCKET _socket{ INVALID_SOCKET };
         sockaddr_in _broadcast{};
-        sockaddr_in _manualPeer{};
-        bool _hasManualPeer{ false };
+        std::vector<sockaddr_in> _configuredPeers;
 
         std::jthread _receiver;
-        std::jthread _discovery;
+        std::jthread _maintenance;
         std::atomic_bool _running{ false };
         std::mutex _sendMutex;
 

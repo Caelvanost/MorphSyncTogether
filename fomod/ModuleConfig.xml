@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://qconsulting.ca/fo3/ModConfig5.0.xsd">
-  <moduleName>MorphSyncTogether 0.2.11</moduleName>
+  <moduleName>MorphSyncTogether 0.3.0</moduleName>
   <moduleImage path="fomod\ModuleImage.png" />
   <requiredInstallFiles>
     <folder source="00 Core" destination="" priority="0" />
@@ -13,7 +13,19 @@
             <plugin name="No - I do not use OPubes">
               <description>Installs BodyMorph and FaceGen makeup synchronization only. OPubes network capture is disabled.</description>
               <typeDescriptor>
-                <type name="Recommended" />
+                <dependencyType>
+                  <defaultType name="Recommended" />
+                  <patterns>
+                    <pattern>
+                      <dependencies operator="Or">
+                        <fileDependency file="OPubes.esp" state="Active" />
+                        <fileDependency file="AK_RM_PubicStyles_All_In_One.esp" state="Active" />
+                        <fileDependency file="AK_RM_PubicStyles_All_In_One_M.esp" state="Active" />
+                      </dependencies>
+                      <type name="Optional" />
+                    </pattern>
+                  </patterns>
+                </dependencyType>
               </typeDescriptor>
             </plugin>
             <plugin name="Yes - I use OPubes">

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
     MorphSyncTogether
-    VERSION 0.2.11
+    VERSION 0.3.0
     LANGUAGES CXX
 )
 
@@ -42,4 +42,4 @@ target_compile_definitions(${PROJECT_NAME}
         NOMINMAX
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32)
+target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32 bcrypt)

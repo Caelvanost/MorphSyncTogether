@@ -76,7 +76,7 @@ New-Item -ItemType Directory -Force -Path $Plugins | Out-Null
 Copy-Item $dll.FullName (Join-Path $Plugins "MorphSyncTogether.dll") -Force
 
 $CoreIni = Join-Path $Plugins "MorphSyncTogether.ini"
-$OPubesIni = Join-Path $OptionalOPubesPackage "Data\SKSE\Plugins\MorphSyncTogether.ini"
+$OPubesIni = Join-Path $OptionalOPubesPackage "Data\SKSE\Plugins\MorphSyncTogether_OPubes.ini"
 $ModuleConfig = Join-Path $FomodSource "ModuleConfig.xml"
 $Info = Join-Path $FomodSource "info.xml"
 $ModuleImage = Join-Path $FomodSource "ModuleImage.png"
@@ -120,7 +120,7 @@ Copy-Item (Join-Path $Package "*") $CoreStage -Recurse -Force
 Copy-Item (Join-Path $OptionalOPubesPackage "*") $OPubesStage -Recurse -Force
 Copy-Item (Join-Path $FomodSource "*") $FomodStage -Recurse -Force
 
-$zip = Join-Path $Root "MorphSyncTogether-v0.2.11-FOMOD.zip"
+$zip = Join-Path $Root "MorphSyncTogether-v0.3.0-FOMOD.zip"
 if (Test-Path $zip) {
     Remove-Item $zip -Force
 }
@@ -137,7 +137,7 @@ try {
     $RequiredEntries = @(
         "00 Core/Data/SKSE/Plugins/MorphSyncTogether.dll",
         "00 Core/Data/SKSE/Plugins/MorphSyncTogether.ini",
-        "10 OPubes/Data/SKSE/Plugins/MorphSyncTogether.ini",
+        "10 OPubes/Data/SKSE/Plugins/MorphSyncTogether_OPubes.ini",
         "fomod/ModuleConfig.xml",
         "fomod/info.xml",
         "fomod/ModuleImage.png"

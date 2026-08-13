@@ -2,6 +2,8 @@
 #include "UdpTransport.h"
 #include "MorphSyncService.h"
 
+#include <bcrypt.h>
+
 namespace MorphSyncTogether
 {
     namespace
@@ -11,6 +13,9 @@ namespace MorphSyncTogether
 
         constexpr std::string_view kGameplayPrefix =
             "MSTUDP|v1|";
+
+        constexpr std::string_view kAuthField =
+            "|auth=";
 
         std::uint16_t ParsePort(
             const std::optional<std::string>& value)
@@ -34,6 +39,98 @@ namespace MorphSyncTogether
             } catch (...) {
                 return 0;
             }
+        }
+
+        std::optional<std::string> ComputeHmacSha256(
+            std::string_view secret,
+            std::string_view data)
+        {
+            BCRYPT_ALG_HANDLE algorithm = nullptr;
+            BCRYPT_HASH_HANDLE hashHandle = nullptr;
+            std::vector<UCHAR> hashObject;
+            std::vector<UCHAR> digest;
+
+            auto status = BCryptOpenAlgorithmProvider(
+                &algorithm,
+                BCRYPT_SHA256_ALGORITHM,
+                nullptr,
+                BCRYPT_ALG_HANDLE_HMAC_FLAG);
+            if (!BCRYPT_SUCCESS(status)) {
+                return std::nullopt;
+            }
+
+            DWORD objectLength = 0;
+            DWORD digestLength = 0;
+            DWORD written = 0;
+            status = BCryptGetProperty(
+                algorithm,
+                BCRYPT_OBJECT_LENGTH,
+                reinterpret_cast<PUCHAR>(&objectLength),
+                sizeof(objectLength),
+                &written,
+                0);
+            if (BCRYPT_SUCCESS(status)) {
+                status = BCryptGetProperty(
+                    algorithm,
+                    BCRYPT_HASH_LENGTH,
+                    reinterpret_cast<PUCHAR>(&digestLength),
+                    sizeof(digestLength),
+                    &written,
+                    0);
+            }
+
+            if (BCRYPT_SUCCESS(status)) {
+                hashObject.resize(objectLength);
+                digest.resize(digestLength);
+                status = BCryptCreateHash(
+                    algorithm,
+                    &hashHandle,
+                    hashObject.data(),
+                    static_cast<ULONG>(hashObject.size()),
+                    reinterpret_cast<PUCHAR>(const_cast<char*>(secret.data())),
+                    static_cast<ULONG>(secret.size()),
+                    0);
+            }
+            if (BCRYPT_SUCCESS(status)) {
+                status = BCryptHashData(
+                    hashHandle,
+                    reinterpret_cast<PUCHAR>(const_cast<char*>(data.data())),
+                    static_cast<ULONG>(data.size()),
+                    0);
+            }
+            if (BCRYPT_SUCCESS(status)) {
+                status = BCryptFinishHash(
+                    hashHandle,
+                    digest.data(),
+                    static_cast<ULONG>(digest.size()),
+                    0);
+            }
+
+            if (hashHandle) {
+                BCryptDestroyHash(hashHandle);
+            }
+            BCryptCloseAlgorithmProvider(algorithm, 0);
+
+            if (!BCRYPT_SUCCESS(status)) {
+                return std::nullopt;
+            }
+
+            constexpr char hex[] = "0123456789abcdef";
+            std::string result;
+            result.reserve(digest.size() * 2);
+            for (const auto byte : digest) {
+                result.push_back(hex[(byte >> 4) & 0x0F]);
+                result.push_back(hex[byte & 0x0F]);
+            }
+            return result;
+        }
+
+        bool SameEndpoint(
+            const sockaddr_in& lhs,
+            const sockaddr_in& rhs)
+        {
+            return lhs.sin_addr.s_addr == rhs.sin_addr.s_addr &&
+                   lhs.sin_port == rhs.sin_port;
         }
     }
 
@@ -155,6 +252,134 @@ namespace MorphSyncTogether
             ip,
             ntohs(
                 address.sin_port));
+    }
+
+    std::string UdpTransport::RemoveAuthField(std::string_view packet)
+    {
+        const auto authPos = packet.rfind(kAuthField);
+        if (authPos == std::string_view::npos) {
+            return std::string(packet);
+        }
+
+        const auto nextField = packet.find('|', authPos + kAuthField.size());
+        std::string result(packet.substr(0, authPos));
+        if (nextField != std::string_view::npos) {
+            result.append(packet.substr(nextField));
+        }
+        return result;
+    }
+
+    std::string UdpTransport::SignPacket(std::string packet) const
+    {
+        packet = RemoveAuthField(packet);
+        if (_config.sharedSecret.empty()) {
+            return packet;
+        }
+
+        const auto tag = ComputeHmacSha256(_config.sharedSecret, packet);
+        if (!tag) {
+            SKSE::log::error("MSTNET HMAC generation failed");
+            return {};
+        }
+        return fmt::format("{}|auth={}", packet, *tag);
+    }
+
+    bool UdpTransport::AuthenticatePacket(std::string_view packet) const
+    {
+        if (_config.sharedSecret.empty()) {
+            return true;
+        }
+
+        const auto authPos = packet.rfind(kAuthField);
+        if (authPos == std::string_view::npos) {
+            return false;
+        }
+
+        const auto tagStart = authPos + kAuthField.size();
+        const auto tagEnd = packet.find('|', tagStart);
+        const auto supplied = packet.substr(
+            tagStart,
+            tagEnd == std::string_view::npos ? std::string_view::npos : tagEnd - tagStart);
+        const auto unsignedPacket = RemoveAuthField(packet);
+        const auto expected = ComputeHmacSha256(_config.sharedSecret, unsignedPacket);
+        if (!expected || supplied.size() != expected->size()) {
+            return false;
+        }
+
+        unsigned char difference = 0;
+        for (std::size_t i = 0; i < supplied.size(); ++i) {
+            difference |= static_cast<unsigned char>(supplied[i] ^ (*expected)[i]);
+        }
+        return difference == 0;
+    }
+
+    std::string UdpTransport::MarkRelayed(std::string_view packet) const
+    {
+        auto result = RemoveAuthField(packet);
+        constexpr std::string_view localMarker = "|relay=0|";
+        const auto marker = result.find(localMarker);
+        if (marker != std::string::npos) {
+            result.replace(marker, localMarker.size(), "|relay=1|");
+        } else {
+            result.insert(kGameplayPrefix.size(), "relay=1|");
+        }
+        return SignPacket(std::move(result));
+    }
+
+    std::optional<sockaddr_in> UdpTransport::ResolveRemotePeer(
+        const Config::RemotePeer& peer) const
+    {
+        addrinfo hints{};
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_DGRAM;
+        hints.ai_protocol = IPPROTO_UDP;
+
+        addrinfo* addresses = nullptr;
+        const auto port = std::to_string(peer.port);
+        if (getaddrinfo(peer.host.c_str(), port.c_str(), &hints, &addresses) != 0 || !addresses) {
+            return std::nullopt;
+        }
+
+        std::optional<sockaddr_in> result;
+        for (auto* item = addresses; item; item = item->ai_next) {
+            if (item->ai_family == AF_INET &&
+                item->ai_addrlen >= static_cast<int>(sizeof(sockaddr_in))) {
+                result = *reinterpret_cast<sockaddr_in*>(item->ai_addr);
+                break;
+            }
+        }
+        freeaddrinfo(addresses);
+        return result;
+    }
+
+    bool UdpTransport::SendPacketTo(
+        std::string_view packet,
+        const sockaddr_in& destination,
+        std::string_view operation)
+    {
+        if (packet.empty() || _socket == INVALID_SOCKET) {
+            return false;
+        }
+
+        std::scoped_lock lock(_sendMutex);
+        const auto sent = sendto(
+            _socket,
+            packet.data(),
+            static_cast<int>(packet.size()),
+            0,
+            reinterpret_cast<const sockaddr*>(&destination),
+            sizeof(destination));
+        if (sent == SOCKET_ERROR) {
+            if (_running.load()) {
+                SKSE::log::warn(
+                    "MSTNET {} failed to {}: {}",
+                    operation,
+                    AddressToString(destination),
+                    WSAGetLastError());
+            }
+            return false;
+        }
+        return true;
     }
 
     bool UdpTransport::Start()
@@ -297,39 +522,25 @@ namespace MorphSyncTogether
             htonl(
                 INADDR_BROADCAST);
 
-        _hasManualPeer =
-            false;
+        _configuredPeers.clear();
+        std::unordered_set<std::string> configuredEndpoints;
+        for (const auto& peer : _config.remotePeers) {
+            const auto resolved = ResolveRemotePeer(peer);
+            if (!resolved) {
+                SKSE::log::warn(
+                    "MSTNET remote peer resolution failed host=\"{}\" port={}",
+                    peer.host,
+                    peer.port);
+                continue;
+            }
 
-        if (!_config.autoDiscovery &&
-            !_config.peerHost.empty()) {
-            _manualPeer = {};
-            _manualPeer.sin_family =
-                AF_INET;
-
-            _manualPeer.sin_port =
-                htons(
-                    _config.peerPort);
-
-            if (InetPtonA(
-                    AF_INET,
-                    _config.peerHost.c_str(),
-                    &_manualPeer.sin_addr) ==
-                1) {
-                _hasManualPeer =
-                    true;
-            } else {
-                SKSE::log::error(
-                    "Manual PeerHost is not a valid IPv4 address: {}",
-                    _config.peerHost);
-
-                closesocket(
-                    _socket);
-
-                _socket =
-                    INVALID_SOCKET;
-
-                WSACleanup();
-                return false;
+            const auto endpoint = AddressToString(*resolved);
+            if (configuredEndpoints.insert(endpoint).second) {
+                _configuredPeers.push_back(*resolved);
+                SKSE::log::info(
+                    "MSTNET remote peer configured host=\"{}\" endpoint={}",
+                    peer.host,
+                    endpoint);
             }
         }
 
@@ -349,32 +560,36 @@ namespace MorphSyncTogether
                     ReceiverLoop();
                 });
 
-        if (_config.autoDiscovery) {
-            _discovery =
+        if (_config.autoDiscovery || !_configuredPeers.empty() || _config.relayMode) {
+            _maintenance =
                 std::jthread(
                     [this](
                         std::stop_token token) {
-                        DiscoveryLoop(
+                        MaintenanceLoop(
                             token);
                     });
         }
 
         SKSE::log::info(
-            "UDP transport started AUTO={} client=\"{}\" port={} instance={}",
+            "UDP transport started AUTO={} RELAY={} AUTH={} client=\"{}\" port={} configuredPeers={} instance={}",
             _config.autoDiscovery ? 1 : 0,
+            _config.relayMode ? 1 : 0,
+            _config.sharedSecret.empty() ? 0 : 1,
             GetLocalClientName(),
             _config.localPort,
+            _configuredPeers.size(),
             _instanceID);
 
-        if (_config.autoDiscovery) {
-            // Do not wait for the first discovery-loop interval.
-            SendHello();
-        } else if (_hasManualPeer) {
-            SKSE::log::info(
-                "UDP manual peer={}",
-                AddressToString(
-                    _manualPeer));
+        if (_config.relayMode && _config.sharedSecret.empty()) {
+            SKSE::log::warn(
+                "MSTNET relay is unauthenticated; set Network/SharedSecret before exposing UDP port {} to the Internet",
+                _config.localPort);
         }
+
+        // Do not wait for the first maintenance-loop interval. This opens a
+        // client's outbound NAT mapping and lets a relay learn the observed
+        // public source endpoint without requiring a client-side port forward.
+        SendHello();
 
         return true;
     }
@@ -390,8 +605,8 @@ namespace MorphSyncTogether
             _receiver.request_stop();
         }
 
-        if (_discovery.joinable()) {
-            _discovery.request_stop();
+        if (_maintenance.joinable()) {
+            _maintenance.request_stop();
         }
 
         if (_socket !=
@@ -407,8 +622,8 @@ namespace MorphSyncTogether
             _receiver.join();
         }
 
-        if (_discovery.joinable()) {
-            _discovery.join();
+        if (_maintenance.joinable()) {
+            _maintenance.join();
         }
 
         {
@@ -417,6 +632,7 @@ namespace MorphSyncTogether
 
             _peers.clear();
         }
+        _configuredPeers.clear();
 
         WSACleanup();
 
@@ -427,51 +643,29 @@ namespace MorphSyncTogether
     void UdpTransport::SendHello()
     {
         if (!_running.load() ||
-            _socket ==
-                INVALID_SOCKET ||
-            !_config.autoDiscovery) {
+            _socket == INVALID_SOCKET) {
             return;
         }
 
-        SendHelloTo(
-            _broadcast);
+        if (_config.autoDiscovery) {
+            SendHelloTo(_broadcast, false);
+        }
+        for (const auto& peer : _configuredPeers) {
+            SendHelloTo(peer, true);
+        }
     }
 
     void UdpTransport::SendHelloTo(
-        const sockaddr_in& destination)
+        const sockaddr_in& destination,
+        bool useObservedSourcePort)
     {
-        const auto packet =
-            fmt::format(
-                "MSTDISC|v1|HELLO|id={}|name={}|port={}",
+        const auto packet = SignPacket(fmt::format(
+                "MSTDISC|v1|HELLO|id={}|name={}|port={}|observed={}",
                 _instanceID,
                 GetLocalClientName(),
-                _config.localPort);
-
-        std::scoped_lock lock(
-            _sendMutex);
-
-        const auto sent =
-            sendto(
-                _socket,
-                packet.data(),
-                static_cast<int>(
-                    packet.size()),
-                0,
-                reinterpret_cast<
-                    const sockaddr*>(
-                    &destination),
-                sizeof(
-                    destination));
-
-        if (sent ==
-            SOCKET_ERROR &&
-            _running.load()) {
-            SKSE::log::warn(
-                "MSTNET discovery TX failed to {}: {}",
-                AddressToString(
-                    destination),
-                WSAGetLastError());
-        }
+                _config.localPort,
+                useObservedSourcePort ? 1 : 0));
+        SendPacketTo(packet, destination, "discovery TX");
     }
 
     void UdpTransport::RegisterPeer(
@@ -539,8 +733,7 @@ namespace MorphSyncTogether
                 instanceID);
 
             // Immediate unicast hello speeds up symmetric discovery.
-            SendHelloTo(
-                peer);
+            SendHelloTo(peer, true);
         }
     }
 
@@ -563,11 +756,10 @@ namespace MorphSyncTogether
                 packet,
                 "name");
 
-        const auto port =
-            ParsePort(
-                ReadField(
-                    packet,
-                    "port"));
+        const auto advertisedPort = ParsePort(ReadField(packet, "port"));
+        const auto observed = ReadField(packet, "observed");
+        const auto port = observed && *observed == "1" ?
+            ntohs(source.sin_port) : advertisedPort;
 
         if (!id ||
             !name ||
@@ -683,26 +875,38 @@ namespace MorphSyncTogether
     }
 
     std::vector<sockaddr_in>
-        UdpTransport::SnapshotPeers()
+        UdpTransport::SnapshotDestinations(
+            const sockaddr_in* excluded)
     {
         std::vector<sockaddr_in>
             result;
+
+        std::unordered_set<std::string> seen;
+        result.reserve(_configuredPeers.size());
+        for (const auto& peer : _configuredPeers) {
+            if (excluded && SameEndpoint(peer, *excluded)) {
+                continue;
+            }
+            const auto endpoint = AddressToString(peer);
+            if (seen.insert(endpoint).second) {
+                result.push_back(peer);
+            }
+        }
 
         {
             std::scoped_lock lock(
                 _peerMutex);
 
             result.reserve(
-                _peers.size());
+                result.size() + _peers.size());
 
             // Deduplicate by IPv4:port because a gameplay temporary record
             // and a HELLO record can briefly refer to the same peer.
-            std::unordered_set<
-                std::string>
-                seen;
-
             for (const auto& [key, peer] :
                  _peers) {
+                if (excluded && SameEndpoint(peer.address, *excluded)) {
+                    continue;
+                }
                 const auto endpoint =
                     AddressToString(
                         peer.address);
@@ -728,30 +932,22 @@ namespace MorphSyncTogether
             return;
         }
 
-        const auto packet =
-            fmt::format(
-                "MSTUDP|v1|id={}|from={}|{}",
+        const auto packet = SignPacket(fmt::format(
+                "MSTUDP|v1|id={}|from={}|relay=0|{}",
                 _instanceID,
                 GetLocalClientName(),
-                payload);
+                payload));
+        if (packet.empty()) {
+            return;
+        }
 
-        std::vector<sockaddr_in>
-            destinations;
+        auto destinations = SnapshotDestinations();
 
-        if (_config.autoDiscovery) {
-            destinations =
-                SnapshotPeers();
-
-            // If a morph snapshot is ready before discovery has completed, send the
-            // packet once by LAN broadcast. A receiving MorphSyncTogether client will
-            // process it and learn our source endpoint immediately.
-            if (destinations.empty()) {
-                destinations.push_back(
-                    _broadcast);
-            }
-        } else if (_hasManualPeer) {
-            destinations.push_back(
-                _manualPeer);
+        // If a snapshot is ready before LAN discovery has completed, send it
+        // once by broadcast. Configured Internet peers remain in the normal
+        // destination set and can coexist with LAN discovery.
+        if (destinations.empty() && _config.autoDiscovery) {
+            destinations.push_back(_broadcast);
         }
 
         if (destinations.empty()) {
@@ -760,38 +956,14 @@ namespace MorphSyncTogether
             return;
         }
 
-        std::scoped_lock lock(
-            _sendMutex);
-
         std::size_t sentCount =
             0;
 
         for (const auto& destination :
              destinations) {
-            const auto sent =
-                sendto(
-                    _socket,
-                    packet.data(),
-                    static_cast<int>(
-                        packet.size()),
-                    0,
-                    reinterpret_cast<
-                        const sockaddr*>(
-                        &destination),
-                    sizeof(
-                        destination));
-
-            if (sent ==
-                SOCKET_ERROR) {
-                SKSE::log::error(
-                    "MSTNET TX failed to {}: {}",
-                    AddressToString(
-                        destination),
-                    WSAGetLastError());
-                continue;
+            if (SendPacketTo(packet, destination, "TX")) {
+                ++sentCount;
             }
-
-            ++sentCount;
         }
 
         SKSE::log::info(
@@ -800,7 +972,40 @@ namespace MorphSyncTogether
             packet);
     }
 
-    void UdpTransport::DiscoveryLoop(
+    void UdpTransport::RelayGameplayPacket(
+        std::string_view packet,
+        const sockaddr_in& source)
+    {
+        if (!_config.relayMode || !packet.starts_with(kGameplayPrefix)) {
+            return;
+        }
+
+        const auto relay = ReadField(packet, "relay");
+        if (relay && *relay != "0") {
+            return;
+        }
+
+        const auto relayedPacket = MarkRelayed(packet);
+        if (relayedPacket.empty()) {
+            return;
+        }
+
+        const auto destinations = SnapshotDestinations(&source);
+        std::size_t sentCount = 0;
+        for (const auto& destination : destinations) {
+            if (SendPacketTo(relayedPacket, destination, "RELAY")) {
+                ++sentCount;
+            }
+        }
+
+        SKSE::log::info(
+            "MSTNET RELAY source={} peers={} sender=\"{}\"",
+            AddressToString(source),
+            sentCount,
+            ReadField(packet, "from").value_or("Peer"));
+    }
+
+    void UdpTransport::MaintenanceLoop(
         std::stop_token stopToken)
     {
         while (
@@ -897,16 +1102,26 @@ namespace MorphSyncTogether
                 buffer.data(),
                 static_cast<
                     std::size_t>(
-                    received));
+                        received));
 
-            if (_config.autoDiscovery &&
-                HandleDiscoveryPacket(
-                    packet,
-                    from)) {
+            const bool discoveryPacket = packet.starts_with(kDiscoveryPrefix);
+            const bool gameplayPacket = packet.starts_with(kGameplayPrefix);
+            if (!discoveryPacket && !gameplayPacket) {
                 continue;
             }
 
-            if (packet.starts_with(kGameplayPrefix)) {
+            if (!AuthenticatePacket(packet)) {
+                SKSE::log::warn(
+                    "MSTNET RX authentication failed from {}",
+                    AddressToString(from));
+                continue;
+            }
+
+            if (HandleDiscoveryPacket(packet, from)) {
+                continue;
+            }
+
+            if (gameplayPacket) {
                 const auto packetID = ReadField(packet, "id");
                 if (packetID && *packetID == _instanceID) {
                     continue;
@@ -916,6 +1131,7 @@ namespace MorphSyncTogether
             TouchPeerFromGameplayPacket(
                 from,
                 packet);
+            RelayGameplayPacket(packet, from);
 
             SKSE::log::info(
                 "MSTNET RX {} {}",

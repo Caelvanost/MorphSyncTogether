@@ -2,16 +2,26 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace MorphSyncTogether
 {
     struct Config
     {
+        struct RemotePeer
+        {
+            std::string host;
+            std::uint16_t port{ 27992 };
+        };
+
         bool networkEnabled{ true };
         bool autoDiscovery{ true };
+        bool relayMode{ false };
         std::uint16_t localPort{ 27992 };
         std::string peerHost{};
         std::uint16_t peerPort{ 27992 };
+        std::vector<RemotePeer> remotePeers;
+        std::string sharedSecret;
         std::uint32_t discoveryIntervalMs{ 1000 };
         std::uint32_t peerTimeoutMs{ 10000 };
 
@@ -29,7 +39,7 @@ namespace MorphSyncTogether
 
         // Synchronize only OPubes/OPubesRaceMenuSelector textures stored in
         // RaceMenu Body [Ovl#] nodes. Other body overlays remain local.
-        bool pubicOverlaySyncEnabled{ true };
+        bool pubicOverlaySyncEnabled{ false };
 
         // Crash-safe RaceMenu/scenegraph diagnostics. Native TintMask access
         // remains disabled. Remote proxy preservation uses only SKEE overlay
