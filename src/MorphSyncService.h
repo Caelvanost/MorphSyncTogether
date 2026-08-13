@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PCH.h"
+#include "AppearanceProbe.h"
 #include "Config.h"
 #include "SkeeInterfaces.h"
 
@@ -44,6 +45,15 @@ namespace MorphSyncTogether
             bool everApplied{ false };
         };
 
+        struct RemotePubicSnapshot
+        {
+            std::uint64_t hash{ 0 };
+            AppearanceProbe::PubicOverlayState state;
+            RE::FormID lastActorFormID{ 0 };
+            std::chrono::steady_clock::time_point lastApply{};
+            bool everApplied{ false };
+        };
+
         MorphSyncService() = default;
         ~MorphSyncService();
         MorphSyncService(const MorphSyncService&) = delete;
@@ -59,12 +69,24 @@ namespace MorphSyncTogether
             RE::PlayerCharacter* player,
             const std::vector<MorphValue>& values,
             std::uint64_t hash);
+        std::uint64_t HashPubicOverlay(
+            const AppearanceProbe::PubicOverlayState& state) const;
+        void BroadcastPubicOverlay(
+            RE::PlayerCharacter* player,
+            const AppearanceProbe::PubicOverlayState& state,
+            std::uint64_t hash);
 
         void HandleMorphPacket(
             std::string_view sender,
             std::string_view payload);
+        void HandlePubicPacket(
+            std::string_view sender,
+            std::string_view payload);
 
         void TryApplyRemote(
+            const std::string& sender,
+            bool force);
+        void TryApplyRemotePubic(
             const std::string& sender,
             bool force);
 
@@ -88,9 +110,13 @@ namespace MorphSyncTogether
         std::uint64_t _lastSentHash{ 0 };
         std::string _lastSentName;
         std::chrono::steady_clock::time_point _lastSentAt{};
+        std::uint64_t _lastSentPubicHash{ 0 };
+        std::string _lastSentPubicName;
+        std::chrono::steady_clock::time_point _lastSentPubicAt{};
 
         mutable std::mutex _remoteMutex;
         std::unordered_map<std::string, IncomingAssembly> _assemblies;
         std::unordered_map<std::string, RemoteSnapshot> _remoteSnapshots;
+        std::unordered_map<std::string, RemotePubicSnapshot> _remotePubicSnapshots;
     };
 }

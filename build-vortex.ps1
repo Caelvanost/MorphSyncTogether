@@ -19,8 +19,33 @@ if (-not (Test-Path $Toolchain)) {
     throw "Toolchain vcpkg introuvable: $Toolchain"
 }
 
-cmake -S $Root -B $Build `
-    -DCMAKE_TOOLCHAIN_FILE="$Toolchain"
+$ConfigureArguments = @(
+    "-S", $Root,
+    "-B", $Build,
+    "-DCMAKE_TOOLCHAIN_FILE=$Toolchain"
+)
+
+$Cache = Join-Path $Build "CMakeCache.txt"
+if (Test-Path $Cache) {
+    $CachedHome = Select-String `
+        -Path $Cache `
+        -Pattern '^CMAKE_HOME_DIRECTORY:INTERNAL=(.+)$' |
+        Select-Object -First 1
+
+    if ($CachedHome -and
+        -not [string]::Equals(
+            [System.IO.Path]::GetFullPath($CachedHome.Matches[0].Groups[1].Value),
+            [System.IO.Path]::GetFullPath($Root),
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+        Write-Host "Le projet a change de chemin; regeneration du cache CMake."
+        $ConfigureArguments = @("--fresh") + $ConfigureArguments
+    }
+}
+
+& cmake @ConfigureArguments
+if ($LASTEXITCODE -ne 0) {
+    throw "La configuration CMake a echoue (code $LASTEXITCODE)."
+}
 
 $GeneratedPlugin = Join-Path $Build "__MorphSyncTogetherPlugin.cpp"
 if (Test-Path $GeneratedPlugin) {
@@ -32,9 +57,14 @@ if (Test-Path $GeneratedPlugin) {
     }
 }
 
-cmake --build $Build --config $Configuration
+& cmake --build $Build --config $Configuration
+if ($LASTEXITCODE -ne 0) {
+    throw "La compilation CMake a echoue (code $LASTEXITCODE)."
+}
 
-$dll = Get-ChildItem -Path $Build -Recurse -Filter "MorphSyncTogether.dll" | Select-Object -First 1
+$dll = Get-ChildItem -Path $Build -Recurse -Filter "MorphSyncTogether.dll" |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
 if (-not $dll) {
     throw "MorphSyncTogether.dll n'a pas ete trouve apres compilation."
 }
@@ -42,7 +72,7 @@ if (-not $dll) {
 New-Item -ItemType Directory -Force -Path $Plugins | Out-Null
 Copy-Item $dll.FullName (Join-Path $Plugins "MorphSyncTogether.dll") -Force
 
-$zip = Join-Path $Root "MorphSyncTogether-v0.2.7-Vortex.zip"
+$zip = Join-Path $Root "MorphSyncTogether-v0.2.10-Vortex.zip"
 if (Test-Path $zip) {
     Remove-Item $zip -Force
 }

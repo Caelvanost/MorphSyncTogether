@@ -112,6 +112,9 @@ namespace MorphSyncTogether
         cfg.clearRemoteMorphs = ReadBool(
             L"MorphSync", L"ClearRemoteMorphs", cfg.clearRemoteMorphs);
 
+        cfg.pubicOverlaySyncEnabled = ReadBool(
+            L"PubicOverlaySync", L"Enabled", cfg.pubicOverlaySyncEnabled);
+
         cfg.appearanceProbeEnabled = ReadBool(
             L"AppearanceProbe", L"Enabled", cfg.appearanceProbeEnabled);
 
@@ -131,24 +134,18 @@ namespace MorphSyncTogether
                 L"AppearancePreserve", L"RecoveryAttempts", cfg.appearanceRecoveryAttempts, kIniPath)),
             1, 10);
 
-        cfg.appearanceRefreshOnTintDrift = ReadBool(
-            L"AppearancePreserve", L"RefreshOnTintDrift", cfg.appearanceRefreshOnTintDrift);
+        cfg.faceMaterialRebindEnabled = ReadBool(
+            L"FaceMaterialRebind", L"Enabled", cfg.faceMaterialRebindEnabled);
 
-        cfg.appearanceRegenerateHeadFallback = ReadBool(
-            L"AppearancePreserve", L"RegenerateHeadFallback", cfg.appearanceRegenerateHeadFallback);
-
-        cfg.appearanceRefreshCooldownMs = Clamp(
+        cfg.faceMaterialRebindFollowups = Clamp(
             static_cast<std::uint32_t>(GetPrivateProfileIntW(
-                L"AppearancePreserve", L"RefreshCooldownMs", cfg.appearanceRefreshCooldownMs, kIniPath)),
-            1000, 10000);
+                L"FaceMaterialRebind", L"FollowupPasses", cfg.faceMaterialRebindFollowups, kIniPath)),
+            1, 10);
 
-        cfg.raceMenuPresetGuardEnabled = ReadBool(
-            L"RaceMenuPresetGuard", L"Enabled", cfg.raceMenuPresetGuardEnabled);
-
-        cfg.raceMenuPresetReloadCooldownMs = Clamp(
+        cfg.faceMaterialRebindIntervalMs = Clamp(
             static_cast<std::uint32_t>(GetPrivateProfileIntW(
-                L"RaceMenuPresetGuard", L"ReloadCooldownMs", cfg.raceMenuPresetReloadCooldownMs, kIniPath)),
-            250, 10000);
+                L"FaceMaterialRebind", L"FollowupIntervalMs", cfg.faceMaterialRebindIntervalMs, kIniPath)),
+            100, 2000);
 
         return cfg;
     }

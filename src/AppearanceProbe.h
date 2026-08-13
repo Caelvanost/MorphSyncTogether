@@ -8,6 +8,16 @@ namespace MorphSyncTogether
     class AppearanceProbe
     {
     public:
+        struct PubicOverlayState
+        {
+            bool present{ false };
+            bool female{ false };
+            std::uint32_t sourceSlot{ 0 };
+            std::string texturePath;
+            std::int32_t color{ 0 };
+            float alpha{ 1.0F };
+        };
+
         static AppearanceProbe& GetSingleton();
 
         void Initialize(SKEE::IInterfaceMap* interfaceMap);
@@ -17,16 +27,16 @@ namespace MorphSyncTogether
             bool verbose,
             bool preserveRemote,
             std::uint32_t recoveryAttempts,
-            bool refreshOnTintDrift,
-            bool regenerateHeadFallback,
-            std::uint32_t refreshCooldownMs,
-            bool presetGuardEnabled,
-            std::uint32_t presetReloadCooldownMs);
+            bool materialRebindEnabled,
+            std::uint32_t materialRebindFollowups,
+            std::uint32_t materialRebindIntervalMs);
         void Reset();
 
         // Must be called on Skyrim's game thread.
         void ProbeLocalPlayer(RE::PlayerCharacter* player);
         void ProbeRemoteProxy(std::string_view sender, RE::Actor* actor);
+        std::optional<PubicOverlayState> CapturePubicOverlay(RE::Actor* actor) const;
+        bool ApplyPubicOverlay(RE::Actor* actor, const PubicOverlayState& state);
 
     private:
         struct Snapshot
@@ -73,20 +83,10 @@ namespace MorphSyncTogether
             bool recoveryPending{ false };
             std::uint32_t recoveryAttemptsLeft{ 0 };
 
-            // v0.2.5 refresh state. The baseline is keyed by remote network
-            // identity rather than the transient FFxxxxxx proxy FormID.
-            std::uint8_t refreshStage{ 0 };  // 0=idle, 1=QueueNiNodeUpdate issued, 2=RegenerateHead issued
-            std::uint32_t refreshFollowupAttemptsLeft{ 0 };
-            std::chrono::steady_clock::time_point lastRefreshRequestAt{};
-            std::chrono::steady_clock::time_point lastTintDriftAt{};
-            std::chrono::steady_clock::time_point refreshFollowupNotBefore{};
-
-            // v0.2.6 RaceMenu public preset baseline. The generated tint DDS
-            // is the important part: it preserves the baked face makeup pixels.
-            bool presetSaved{ false };
-            std::string presetFilePath;
-            std::string tintFilePath;
-            std::chrono::steady_clock::time_point lastPresetLoadAt{};
+            // v0.2.10 render rebind state. Repeated passes cover late OStim
+            // material work without rebuilding the actor's entire head.
+            std::uint32_t materialRebindFollowupsLeft{ 0 };
+            std::chrono::steady_clock::time_point materialRebindNotBefore{};
         };
 
         AppearanceProbe() = default;
@@ -127,29 +127,10 @@ namespace MorphSyncTogether
             const std::string& key,
             std::string_view label,
             RE::Actor* actor);
-        bool SaveRaceMenuFaceBaseline(
+        void RunFaceMaterialRebindFollowup(
             const std::string& key,
             std::string_view label,
             RE::Actor* actor);
-        bool ReloadRaceMenuFacePreset(
-            const std::string& key,
-            std::string_view label,
-            RE::Actor* actor,
-            bool force);
-        static std::string SanitizeCacheName(std::string_view label);
-
-        void HandleFaceGenRefresh(
-            const std::string& key,
-            std::string_view label,
-            RE::Actor* actor,
-            std::uint32_t restoredTintCount);
-        void RunFaceGenRefreshFollowup(
-            const std::string& key,
-            std::string_view label,
-            RE::Actor* actor);
-        bool DispatchActorPapyrusNoArgs(
-            RE::Actor* actor,
-            std::string_view functionName) const;
         void BeginRemoteRecovery(
             const std::string& key,
             std::string_view label,
@@ -169,18 +150,15 @@ namespace MorphSyncTogether
         mutable std::mutex _interfaceMutex;
         SKEE::IOverlayInterface* _overlay{ nullptr };
         SKEE::IOverrideInterface* _override{ nullptr };
-        SKEE::IPresetInterface* _preset{ nullptr };
 
         bool _enabled{ true };
         bool _verbose{ true };
         bool _preserveRemote{ true };
         std::uint32_t _intervalMs{ 1000 };
         std::uint32_t _recoveryAttempts{ 3 };
-        bool _refreshOnTintDrift{ true };
-        bool _regenerateHeadFallback{ true };
-        std::uint32_t _refreshCooldownMs{ 2500 };
-        bool _presetGuardEnabled{ true };
-        std::uint32_t _presetReloadCooldownMs{ 1000 };
+        bool _materialRebindEnabled{ true };
+        std::uint32_t _materialRebindFollowups{ 3 };
+        std::uint32_t _materialRebindIntervalMs{ 1000 };
 
         mutable std::mutex _stateMutex;
         std::unordered_map<std::string, Snapshot> _snapshots;
