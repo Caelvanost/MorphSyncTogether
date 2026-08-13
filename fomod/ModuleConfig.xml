@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://qconsulting.ca/fo3/ModConfig5.0.xsd">
+  <moduleName>MorphSyncTogether 0.2.11</moduleName>
+  <moduleImage path="fomod\ModuleImage.png" />
+  <requiredInstallFiles>
+    <folder source="00 Core" destination="" priority="0" />
+  </requiredInstallFiles>
+  <installSteps order="Explicit">
+    <installStep name="OPubes integration">
+      <optionalFileGroups order="Explicit">
+        <group name="Do you use OPubes?" type="SelectExactlyOne">
+          <plugins order="Explicit">
+            <plugin name="No - I do not use OPubes">
+              <description>Installs BodyMorph and FaceGen makeup synchronization only. OPubes network capture is disabled.</description>
+              <typeDescriptor>
+                <type name="Recommended" />
+              </typeDescriptor>
+            </plugin>
+            <plugin name="Yes - I use OPubes">
+              <description>Also synchronizes the OPubes or OPubesRaceMenuSelector texture, tint, alpha, and shaved state. Install the same option on every client.</description>
+              <files>
+                <folder source="10 OPubes" destination="" priority="10" />
+              </files>
+              <typeDescriptor>
+                <dependencyType>
+                  <defaultType name="Optional" />
+                  <patterns>
+                    <pattern>
+                      <dependencies operator="Or">
+                        <fileDependency file="OPubes.esp" state="Active" />
+                        <fileDependency file="AK_RM_PubicStyles_All_In_One.esp" state="Active" />
+                        <fileDependency file="AK_RM_PubicStyles_All_In_One_M.esp" state="Active" />
+                      </dependencies>
+                      <type name="Recommended" />
+                    </pattern>
+                  </patterns>
+                </dependencyType>
+              </typeDescriptor>
+            </plugin>
+          </plugins>
+        </group>
+      </optionalFileGroups>
+    </installStep>
+  </installSteps>
+</config>
