@@ -1,13 +1,14 @@
-# MorphSyncTogether v0.3.0 - Internet relay and FOMOD installer
+# MorphSyncTogether v0.4.0 - STR auto-connect and FOMOD installer
 
-MorphSyncTogether is an SKSE plugin that keeps remote Skyrim Together player
-appearance data authoritative across clients. It synchronizes RaceMenu
-BodyMorphs, preserves FaceGen makeup after local mod changes, and can optionally
-synchronize OPubes overlays.
+MorphSyncTogether is an SKSE plugin that keeps remote Skyrim Together Reborn
+player appearance data authoritative across clients. It synchronizes RaceMenu
+BodyMorphs, preserves FaceGen makeup after local mod changes, and can
+optionally synchronize OPubes overlays.
 
-Version 0.3.0 adds direct Internet peers and a multi-player UDP relay. A single
-relay machine can expose one forwarded port; remote clients connect outbound and
-do not need their own port forwarding.
+Version 0.4.0 removes the normal need to edit client INI files for Internet
+play. Remote clients can reuse Skyrim Together Reborn's saved direct-connect
+address automatically: if STR connects to `host:10578`, MorphSync sends its UDP
+traffic to the same `host` on port `27992`.
 
 ## Requirements
 
@@ -15,15 +16,24 @@ do not need their own port forwarding.
 - SKSE64
 - RaceMenu
 - Address Library for SKSE Plugins
-- The same MorphSyncTogether version, shared secret, and OPubes FOMOD choice on
-  every client
+- The same MorphSyncTogether version and OPubes FOMOD choice on every client
 
 OBody, OStim and OPubes are supported integrations, not hard requirements.
 
 ## Installation
 
-Install `MorphSyncTogether-v0.3.0-FOMOD.zip` with Vortex or another
-FOMOD-compatible mod manager. The installer asks one required question:
+Install `MorphSyncTogether-v0.4.0-FOMOD.zip` with Vortex or another
+FOMOD-compatible mod manager. The installer asks two questions.
+
+Internet role:
+
+- **Client / LAN / no Internet relay** is the default for almost everyone. LAN
+  discovery stays enabled, and distant clients automatically reuse STR's saved
+  direct-connect address when available.
+- **Player1 host / Internet relay** is only for the Skyrim Together host machine
+  that forwards UDP `27992`. It enables MorphSync relay mode.
+
+OPubes integration:
 
 - **No - I do not use OPubes** installs BodyMorph and FaceGen makeup sync with
   `[PubicOverlaySync] Enabled=0`.
@@ -34,12 +44,78 @@ FOMOD-compatible mod manager. The installer asks one required question:
 
 The installer recommends the OPubes option when it detects `OPubes.esp`,
 `AK_RM_PubicStyles_All_In_One.esp`, or
-`AK_RM_PubicStyles_All_In_One_M.esp`. Install the same option on every Skyrim
-Together client.
+`AK_RM_PubicStyles_All_In_One_M.esp`.
+
+## Recommended Internet setup
+
+On Player1 / the STR host:
+
+1. Forward **UDP** port `27992` from the router to the host PC.
+2. Allow UDP `27992` through Windows Firewall.
+3. In the FOMOD, choose **Player1 host / Internet relay**.
+
+On each remote client:
+
+1. Install the mod with the default **Client / LAN / no Internet relay** role.
+2. Connect to Player1 with STR direct connect as usual, for example
+   `82.65.51.103:10578`.
+3. No MorphSync INI edit is normally required.
+
+Clients send periodic discovery packets to the host. This opens their outbound
+NAT mapping, so they normally need no inbound port forwarding. The host relay
+learns each observed public endpoint and forwards gameplay packets to all other
+active peers. Relayed packets are marked and never relayed a second time,
+preventing routing loops.
+
+## STR auto-detection
+
+The default client configuration is:
+
+```ini
+[Network]
+Disabled=0
+AutoDiscovery=1
+RelayMode=0
+LocalPort=27992
+AutoRemoteFromSTR=1
+AutoRemotePort=27992
+AutoSharedSecretFromSTR=0
+RemotePeers=
+SharedSecret=
+```
+
+`AutoRemoteFromSTR=1` reads STR's Chromium localStorage key
+`last_connected_address` from:
+
+```text
+Data\SkyrimTogetherReborn\cache\Default\Local Storage\leveldb
+```
+
+If STR saved `82.65.51.103:10578`, MorphSync automatically configures
+`82.65.51.103:27992` as a remote peer. The setting is refreshed while the game
+runs, so a client can connect to STR after MorphSync has already started.
+
+By default, the zero-INI Internet setup is unauthenticated because it is the
+most forgiving path for remote clients. Optional STR-password authentication is
+available with `AutoSharedSecretFromSTR=1` when `SharedSecret=` is empty:
+
+- Relay host: reads `sPassword` from
+  `Data\SkyrimTogetherReborn\config\STServer.ini`.
+- Remote client: reads STR's saved direct-connect password when available.
+
+No password or shared secret is logged or transmitted by MorphSync. Only enable
+this option when every remote client saves the STR password locally; otherwise
+clients without the saved password will not authenticate with a strict relay.
+For stricter Internet play, an explicit `SharedSecret=` remains the clearest
+option.
+
+Manual `RemotePeers=` and `SharedSecret=` are still supported. If
+`SharedSecret` is set explicitly, it overrides STR password auto-detection and
+every client must use the exact same value.
 
 ## LAN configuration
 
-The default configuration discovers players by LAN broadcast:
+The default configuration still discovers players by LAN broadcast:
 
 ```ini
 [Network]
@@ -52,53 +128,8 @@ SharedSecret=
 ```
 
 LAN broadcast does not cross Internet routers. `AutoDiscovery=1` can remain
-enabled when `RemotePeers` is also used, allowing LAN and Internet players in
-the same session.
-
-## Recommended Internet configuration: one relay
-
-Choose the machine that hosts the Skyrim Together session or has the easiest
-router access. Forward **UDP** port `27992` from its router to that computer and
-allow the same port through Windows Firewall.
-
-The relay must have a reachable public IPv4 address. If the Internet provider
-uses carrier-grade NAT (CGNAT), ordinary router forwarding will not work; use a
-publicly reachable machine or a trusted mesh VPN instead.
-
-Relay machine:
-
-```ini
-[Network]
-Disabled=0
-AutoDiscovery=0
-RelayMode=1
-LocalPort=27992
-RemotePeers=
-SharedSecret=replace-this-with-the-same-long-private-value
-```
-
-Every remote client:
-
-```ini
-[Network]
-Disabled=0
-AutoDiscovery=0
-RelayMode=0
-LocalPort=27992
-RemotePeers=relay-public-ip-or-dns-name:27992
-SharedSecret=replace-this-with-the-same-long-private-value
-```
-
-Clients send periodic authenticated discovery packets to the relay. This opens
-their outbound NAT mapping, so they normally need no inbound port forwarding.
-The relay learns each observed public endpoint and forwards gameplay packets to
-all other active peers. Relayed packets are marked and never relayed a second
-time, preventing routing loops.
-
-`SharedSecret` enables HMAC-SHA256 authentication for both discovery and
-gameplay packets. It is strongly recommended whenever a UDP port is exposed to
-the Internet. The secret itself is never transmitted. All clients in the
-session must use the exact same value.
+enabled when STR auto-detection or manual `RemotePeers` are also used, allowing
+LAN and Internet players in the same session.
 
 ## Direct Internet peers
 
@@ -131,11 +162,19 @@ comma or semicolon and can use different external ports. The legacy
 
 ## Expected log
 
-Relay startup with authentication:
+Client startup after STR direct-connect address detection:
 
 ```text
-MorphSyncTogether v0.3.0 loading
-UDP transport started AUTO=0 RELAY=1 AUTH=1 ... port=27992
+MorphSyncTogether v0.4.0 loading
+MSTNET STR auto remote configured address="82.65.51.103:10578" endpoint=82.65.51.103:27992
+UDP transport started AUTO=1 RELAY=0 AUTH=... port=27992 configuredPeers=1 ...
+```
+
+Relay startup:
+
+```text
+MorphSyncTogether v0.4.0 loading
+UDP transport started AUTO=0 RELAY=1 AUTH=0 ... port=27992
 MSTNET DISCOVERED peer="..." addr=... instance=...
 MSTNET RELAY source=... peers=... sender="..."
 ```
@@ -158,10 +197,10 @@ MST PUBES APPLY ... applied=1 verified=1
 
 ## Build
 
-Run `build-vortex.ps1`. It compiles the Release DLL, validates both INI
-profiles and the FOMOD XML, stages the installer, creates the ZIP, and verifies
-all required archive entries.
+Run `build-vortex.ps1`. It compiles the Release DLL, validates the INI profiles
+and FOMOD XML, stages the installer, creates the ZIP, and verifies all required
+archive entries.
 
 ```text
-MorphSyncTogether-v0.3.0-FOMOD.zip
+MorphSyncTogether-v0.4.0-FOMOD.zip
 ```

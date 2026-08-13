@@ -18,6 +18,9 @@ namespace MorphSyncTogether
         bool autoDiscovery{ true };
         bool relayMode{ false };
         std::uint16_t localPort{ 27992 };
+        bool autoRemoteFromSTR{ true };
+        std::uint16_t autoRemotePort{ 27992 };
+        bool autoSharedSecretFromSTR{ false };
         std::string peerHost{};
         std::uint16_t peerPort{ 27992 };
         std::vector<RemotePeer> remotePeers;

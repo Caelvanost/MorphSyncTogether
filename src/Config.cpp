@@ -11,16 +11,19 @@ namespace MorphSyncTogether
             L".\\Data\\SKSE\\Plugins\\MorphSyncTogether.ini";
         constexpr wchar_t kOPubesIniPath[] =
             L".\\Data\\SKSE\\Plugins\\MorphSyncTogether_OPubes.ini";
+        constexpr wchar_t kRelayHostIniPath[] =
+            L".\\Data\\SKSE\\Plugins\\MorphSyncTogether_RelayHost.ini";
 
         std::string ReadString(
             const wchar_t* section,
             const wchar_t* key,
-            const wchar_t* fallback)
+            const wchar_t* fallback,
+            const wchar_t* path = kIniPath)
         {
             wchar_t buffer[2048]{};
             GetPrivateProfileStringW(
                 section, key, fallback, buffer,
-                static_cast<DWORD>(std::size(buffer)), kIniPath);
+                static_cast<DWORD>(std::size(buffer)), path);
 
             if (buffer[0] == L'\0') {
                 return {};
@@ -51,6 +54,16 @@ namespace MorphSyncTogether
         {
             return GetPrivateProfileIntW(
                        section, key, fallback ? 1 : 0, path) != 0;
+        }
+
+        std::uint32_t ReadUInt(
+            const wchar_t* section,
+            const wchar_t* key,
+            std::uint32_t fallback,
+            const wchar_t* path = kIniPath)
+        {
+            return static_cast<std::uint32_t>(
+                GetPrivateProfileIntW(section, key, fallback, path));
         }
 
         std::uint32_t Clamp(
@@ -155,27 +168,35 @@ namespace MorphSyncTogether
         cfg.autoDiscovery = ReadBool(L"Network", L"AutoDiscovery", true);
         cfg.relayMode = ReadBool(L"Network", L"RelayMode", false);
 
-        auto localPort = static_cast<std::uint32_t>(GetPrivateProfileIntW(
-            L"Network", L"LocalPort", cfg.localPort, kIniPath));
+        auto localPort = ReadUInt(L"Network", L"LocalPort", cfg.localPort);
         if (localPort == 0 || localPort > 65535) {
             localPort = 27992;
         }
         cfg.localPort = static_cast<std::uint16_t>(localPort);
         cfg.peerPort = cfg.localPort;
+        cfg.autoRemotePort = cfg.localPort;
+
+        cfg.autoRemoteFromSTR = ReadBool(
+            L"Network", L"AutoRemoteFromSTR", cfg.autoRemoteFromSTR);
+        cfg.autoSharedSecretFromSTR = ReadBool(
+            L"Network", L"AutoSharedSecretFromSTR", cfg.autoSharedSecretFromSTR);
+        auto autoRemotePort = ReadUInt(
+            L"Network", L"AutoRemotePort", cfg.autoRemotePort);
+        if (autoRemotePort == 0 || autoRemotePort > 65535) {
+            autoRemotePort = cfg.localPort;
+        }
+        cfg.autoRemotePort = static_cast<std::uint16_t>(autoRemotePort);
 
         cfg.discoveryIntervalMs = Clamp(
-            static_cast<std::uint32_t>(GetPrivateProfileIntW(
-                L"Network", L"DiscoveryIntervalMs", cfg.discoveryIntervalMs, kIniPath)),
+            ReadUInt(L"Network", L"DiscoveryIntervalMs", cfg.discoveryIntervalMs),
             250, 5000);
 
         cfg.peerTimeoutMs = Clamp(
-            static_cast<std::uint32_t>(GetPrivateProfileIntW(
-                L"Network", L"PeerTimeoutMs", cfg.peerTimeoutMs, kIniPath)),
+            ReadUInt(L"Network", L"PeerTimeoutMs", cfg.peerTimeoutMs),
             3000, 60000);
 
         cfg.peerHost = ReadString(L"Network", L"PeerHost", L"");
-        auto peerPort = static_cast<std::uint32_t>(GetPrivateProfileIntW(
-            L"Network", L"PeerPort", cfg.peerPort, kIniPath));
+        auto peerPort = ReadUInt(L"Network", L"PeerPort", cfg.peerPort);
         if (peerPort == 0 || peerPort > 65535) {
             peerPort = cfg.localPort;
         }
@@ -197,19 +218,45 @@ namespace MorphSyncTogether
         }
         cfg.sharedSecret = ReadString(L"Network", L"SharedSecret", L"");
 
+        if (GetFileAttributesW(kRelayHostIniPath) != INVALID_FILE_ATTRIBUTES) {
+            cfg.autoDiscovery = ReadBool(
+                L"Network", L"AutoDiscovery", cfg.autoDiscovery, kRelayHostIniPath);
+            cfg.relayMode = ReadBool(
+                L"Network", L"RelayMode", cfg.relayMode, kRelayHostIniPath);
+            cfg.autoRemoteFromSTR = ReadBool(
+                L"Network", L"AutoRemoteFromSTR", cfg.autoRemoteFromSTR, kRelayHostIniPath);
+            cfg.autoSharedSecretFromSTR = ReadBool(
+                L"Network", L"AutoSharedSecretFromSTR", cfg.autoSharedSecretFromSTR, kRelayHostIniPath);
+
+            auto relayLocalPort = ReadUInt(
+                L"Network", L"LocalPort", cfg.localPort, kRelayHostIniPath);
+            if (relayLocalPort > 0 && relayLocalPort <= 65535) {
+                cfg.localPort = static_cast<std::uint16_t>(relayLocalPort);
+            }
+
+            auto relayAutoRemotePort = ReadUInt(
+                L"Network", L"AutoRemotePort", cfg.autoRemotePort, kRelayHostIniPath);
+            if (relayAutoRemotePort > 0 && relayAutoRemotePort <= 65535) {
+                cfg.autoRemotePort = static_cast<std::uint16_t>(relayAutoRemotePort);
+            }
+
+            const auto relaySharedSecret = ReadString(
+                L"Network", L"SharedSecret", L"", kRelayHostIniPath);
+            if (!relaySharedSecret.empty()) {
+                cfg.sharedSecret = relaySharedSecret;
+            }
+        }
+
         cfg.syncIntervalMs = Clamp(
-            static_cast<std::uint32_t>(GetPrivateProfileIntW(
-                L"MorphSync", L"SyncIntervalMs", cfg.syncIntervalMs, kIniPath)),
+            ReadUInt(L"MorphSync", L"SyncIntervalMs", cfg.syncIntervalMs),
             250, 10000);
 
         cfg.fullResendMs = Clamp(
-            static_cast<std::uint32_t>(GetPrivateProfileIntW(
-                L"MorphSync", L"FullResendMs", cfg.fullResendMs, kIniPath)),
+            ReadUInt(L"MorphSync", L"FullResendMs", cfg.fullResendMs),
             1000, 60000);
 
         cfg.remoteReapplyMs = Clamp(
-            static_cast<std::uint32_t>(GetPrivateProfileIntW(
-                L"MorphSync", L"RemoteReapplyMs", cfg.remoteReapplyMs, kIniPath)),
+            ReadUInt(L"MorphSync", L"RemoteReapplyMs", cfg.remoteReapplyMs),
             1000, 60000);
 
         cfg.clearRemoteMorphs = ReadBool(
@@ -229,8 +276,7 @@ namespace MorphSyncTogether
             L"AppearanceProbe", L"Enabled", cfg.appearanceProbeEnabled);
 
         cfg.appearanceProbeIntervalMs = Clamp(
-            static_cast<std::uint32_t>(GetPrivateProfileIntW(
-                L"AppearanceProbe", L"IntervalMs", cfg.appearanceProbeIntervalMs, kIniPath)),
+            ReadUInt(L"AppearanceProbe", L"IntervalMs", cfg.appearanceProbeIntervalMs),
             250, 10000);
 
         cfg.appearanceProbeVerbose = ReadBool(
@@ -240,21 +286,18 @@ namespace MorphSyncTogether
             L"AppearancePreserve", L"Enabled", cfg.appearancePreserveRemote);
 
         cfg.appearanceRecoveryAttempts = Clamp(
-            static_cast<std::uint32_t>(GetPrivateProfileIntW(
-                L"AppearancePreserve", L"RecoveryAttempts", cfg.appearanceRecoveryAttempts, kIniPath)),
+            ReadUInt(L"AppearancePreserve", L"RecoveryAttempts", cfg.appearanceRecoveryAttempts),
             1, 10);
 
         cfg.faceMaterialRebindEnabled = ReadBool(
             L"FaceMaterialRebind", L"Enabled", cfg.faceMaterialRebindEnabled);
 
         cfg.faceMaterialRebindFollowups = Clamp(
-            static_cast<std::uint32_t>(GetPrivateProfileIntW(
-                L"FaceMaterialRebind", L"FollowupPasses", cfg.faceMaterialRebindFollowups, kIniPath)),
+            ReadUInt(L"FaceMaterialRebind", L"FollowupPasses", cfg.faceMaterialRebindFollowups),
             1, 10);
 
         cfg.faceMaterialRebindIntervalMs = Clamp(
-            static_cast<std::uint32_t>(GetPrivateProfileIntW(
-                L"FaceMaterialRebind", L"FollowupIntervalMs", cfg.faceMaterialRebindIntervalMs, kIniPath)),
+            ReadUInt(L"FaceMaterialRebind", L"FollowupIntervalMs", cfg.faceMaterialRebindIntervalMs),
             100, 2000);
 
         return cfg;

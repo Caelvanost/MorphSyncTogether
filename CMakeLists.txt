@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
     MorphSyncTogether
-    VERSION 0.3.0
+    VERSION 0.4.0
     LANGUAGES CXX
 )
 
@@ -19,6 +19,8 @@ add_commonlibsse_plugin(${PROJECT_NAME}
         src/Config.h
         src/UdpTransport.cpp
         src/UdpTransport.h
+        src/StrServerDiscovery.cpp
+        src/StrServerDiscovery.h
         src/SkeeInterfaces.h
         src/AppearanceProbe.cpp
         src/AppearanceProbe.h

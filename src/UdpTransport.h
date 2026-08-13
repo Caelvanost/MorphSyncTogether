@@ -60,6 +60,9 @@ namespace MorphSyncTogether
             const sockaddr_in& destination,
             std::string_view operation);
         std::optional<sockaddr_in> ResolveRemotePeer(const Config::RemotePeer& peer) const;
+        void RefreshSkyrimTogetherAutoConfig(bool force);
+        std::vector<sockaddr_in> SnapshotConfiguredPeers() const;
+        std::string GetSharedSecretSnapshot() const;
         std::string SignPacket(std::string packet) const;
         bool AuthenticatePacket(std::string_view packet) const;
         static std::string RemoveAuthField(std::string_view packet);
@@ -73,6 +76,10 @@ namespace MorphSyncTogether
         SOCKET _socket{ INVALID_SOCKET };
         sockaddr_in _broadcast{};
         std::vector<sockaddr_in> _configuredPeers;
+        mutable std::mutex _configuredPeerMutex;
+        mutable std::mutex _authMutex;
+        std::string _sharedSecret;
+        std::chrono::steady_clock::time_point _lastStrAutoConfigRefresh{};
 
         std::jthread _receiver;
         std::jthread _maintenance;

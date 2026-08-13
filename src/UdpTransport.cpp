@@ -1,6 +1,7 @@
 #include "PCH.h"
 #include "UdpTransport.h"
 #include "MorphSyncService.h"
+#include "StrServerDiscovery.h"
 
 #include <bcrypt.h>
 
@@ -272,11 +273,12 @@ namespace MorphSyncTogether
     std::string UdpTransport::SignPacket(std::string packet) const
     {
         packet = RemoveAuthField(packet);
-        if (_config.sharedSecret.empty()) {
+        const auto sharedSecret = GetSharedSecretSnapshot();
+        if (sharedSecret.empty()) {
             return packet;
         }
 
-        const auto tag = ComputeHmacSha256(_config.sharedSecret, packet);
+        const auto tag = ComputeHmacSha256(sharedSecret, packet);
         if (!tag) {
             SKSE::log::error("MSTNET HMAC generation failed");
             return {};
@@ -286,7 +288,8 @@ namespace MorphSyncTogether
 
     bool UdpTransport::AuthenticatePacket(std::string_view packet) const
     {
-        if (_config.sharedSecret.empty()) {
+        const auto sharedSecret = GetSharedSecretSnapshot();
+        if (sharedSecret.empty()) {
             return true;
         }
 
@@ -301,7 +304,7 @@ namespace MorphSyncTogether
             tagStart,
             tagEnd == std::string_view::npos ? std::string_view::npos : tagEnd - tagStart);
         const auto unsignedPacket = RemoveAuthField(packet);
-        const auto expected = ComputeHmacSha256(_config.sharedSecret, unsignedPacket);
+        const auto expected = ComputeHmacSha256(sharedSecret, unsignedPacket);
         if (!expected || supplied.size() != expected->size()) {
             return false;
         }
@@ -352,6 +355,105 @@ namespace MorphSyncTogether
         return result;
     }
 
+    std::string UdpTransport::GetSharedSecretSnapshot() const
+    {
+        std::scoped_lock lock(_authMutex);
+        return _sharedSecret;
+    }
+
+    std::vector<sockaddr_in> UdpTransport::SnapshotConfiguredPeers() const
+    {
+        std::scoped_lock lock(_configuredPeerMutex);
+        return _configuredPeers;
+    }
+
+    void UdpTransport::RefreshSkyrimTogetherAutoConfig(bool force)
+    {
+        if (!_config.autoRemoteFromSTR &&
+            !_config.autoSharedSecretFromSTR) {
+            return;
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        if (!force &&
+            _lastStrAutoConfigRefresh.time_since_epoch().count() != 0 &&
+            now - _lastStrAutoConfigRefresh < std::chrono::seconds(5)) {
+            return;
+        }
+        _lastStrAutoConfigRefresh = now;
+
+        if (_config.autoSharedSecretFromSTR &&
+            _config.sharedSecret.empty()) {
+            const auto password = _config.relayMode ?
+                StrServerDiscovery::ReadServerPasswordFromConfig() :
+                StrServerDiscovery::ReadClientState(_config.autoRemotePort).password;
+
+            if (password && !password->empty()) {
+                bool changed = false;
+                {
+                    std::scoped_lock lock(_authMutex);
+                    if (_sharedSecret != *password) {
+                        _sharedSecret = *password;
+                        changed = true;
+                    }
+                }
+
+                if (changed) {
+                    SKSE::log::info(
+                        "MSTNET STR shared secret auto-loaded source={}",
+                        _config.relayMode ? "STServer.ini" : "localStorage");
+                }
+            }
+        }
+
+        if (!_config.autoRemoteFromSTR ||
+            _config.relayMode) {
+            return;
+        }
+
+        const auto state = StrServerDiscovery::ReadClientState(_config.autoRemotePort);
+        if (!state.remotePeer) {
+            if (force) {
+                SKSE::log::info(
+                    "MSTNET STR auto remote pending: no saved direct-connect address found");
+            }
+            return;
+        }
+
+        const auto resolved = ResolveRemotePeer(*state.remotePeer);
+        if (!resolved) {
+            SKSE::log::warn(
+                "MSTNET STR auto remote resolution failed address=\"{}\" host=\"{}\" port={}",
+                state.rawAddress,
+                state.remotePeer->host,
+                state.remotePeer->port);
+            return;
+        }
+
+        const auto endpoint = AddressToString(*resolved);
+        bool inserted = false;
+        {
+            std::scoped_lock lock(_configuredPeerMutex);
+            const auto duplicate = std::ranges::any_of(
+                _configuredPeers,
+                [&](const sockaddr_in& existing) {
+                    return SameEndpoint(existing, *resolved);
+                });
+
+            if (!duplicate) {
+                _configuredPeers.push_back(*resolved);
+                inserted = true;
+            }
+        }
+
+        if (inserted) {
+            SKSE::log::info(
+                "MSTNET STR auto remote configured address=\"{}\" endpoint={}",
+                state.rawAddress,
+                endpoint);
+        }
+    }
+
     bool UdpTransport::SendPacketTo(
         std::string_view packet,
         const sockaddr_in& destination,
@@ -390,6 +492,11 @@ namespace MorphSyncTogether
 
         _config =
             Config::Load();
+        {
+            std::scoped_lock lock(_authMutex);
+            _sharedSecret = _config.sharedSecret;
+        }
+        _lastStrAutoConfigRefresh = {};
 
         if (!_config.networkEnabled) {
             SKSE::log::info(
@@ -522,7 +629,7 @@ namespace MorphSyncTogether
             htonl(
                 INADDR_BROADCAST);
 
-        _configuredPeers.clear();
+        std::vector<sockaddr_in> configuredPeers;
         std::unordered_set<std::string> configuredEndpoints;
         for (const auto& peer : _config.remotePeers) {
             const auto resolved = ResolveRemotePeer(peer);
@@ -536,12 +643,16 @@ namespace MorphSyncTogether
 
             const auto endpoint = AddressToString(*resolved);
             if (configuredEndpoints.insert(endpoint).second) {
-                _configuredPeers.push_back(*resolved);
+                configuredPeers.push_back(*resolved);
                 SKSE::log::info(
                     "MSTNET remote peer configured host=\"{}\" endpoint={}",
                     peer.host,
                     endpoint);
             }
+        }
+        {
+            std::scoped_lock lock(_configuredPeerMutex);
+            _configuredPeers = std::move(configuredPeers);
         }
 
         _instanceID =
@@ -549,6 +660,10 @@ namespace MorphSyncTogether
                 "{:08X}-{:016X}",
                 GetCurrentProcessId(),
                 GetTickCount64());
+
+        RefreshSkyrimTogetherAutoConfig(true);
+        const auto configuredPeerCount = SnapshotConfiguredPeers().size();
+        const auto sharedSecret = GetSharedSecretSnapshot();
 
         _running.store(
             true);
@@ -560,7 +675,11 @@ namespace MorphSyncTogether
                     ReceiverLoop();
                 });
 
-        if (_config.autoDiscovery || !_configuredPeers.empty() || _config.relayMode) {
+        if (_config.autoDiscovery ||
+            configuredPeerCount > 0 ||
+            _config.relayMode ||
+            _config.autoRemoteFromSTR ||
+            _config.autoSharedSecretFromSTR) {
             _maintenance =
                 std::jthread(
                     [this](
@@ -574,13 +693,13 @@ namespace MorphSyncTogether
             "UDP transport started AUTO={} RELAY={} AUTH={} client=\"{}\" port={} configuredPeers={} instance={}",
             _config.autoDiscovery ? 1 : 0,
             _config.relayMode ? 1 : 0,
-            _config.sharedSecret.empty() ? 0 : 1,
+            sharedSecret.empty() ? 0 : 1,
             GetLocalClientName(),
             _config.localPort,
-            _configuredPeers.size(),
+            configuredPeerCount,
             _instanceID);
 
-        if (_config.relayMode && _config.sharedSecret.empty()) {
+        if (_config.relayMode && sharedSecret.empty()) {
             SKSE::log::warn(
                 "MSTNET relay is unauthenticated; set Network/SharedSecret before exposing UDP port {} to the Internet",
                 _config.localPort);
@@ -632,7 +751,14 @@ namespace MorphSyncTogether
 
             _peers.clear();
         }
-        _configuredPeers.clear();
+        {
+            std::scoped_lock lock(_configuredPeerMutex);
+            _configuredPeers.clear();
+        }
+        {
+            std::scoped_lock lock(_authMutex);
+            _sharedSecret.clear();
+        }
 
         WSACleanup();
 
@@ -650,7 +776,7 @@ namespace MorphSyncTogether
         if (_config.autoDiscovery) {
             SendHelloTo(_broadcast, false);
         }
-        for (const auto& peer : _configuredPeers) {
+        for (const auto& peer : SnapshotConfiguredPeers()) {
             SendHelloTo(peer, true);
         }
     }
@@ -882,8 +1008,9 @@ namespace MorphSyncTogether
             result;
 
         std::unordered_set<std::string> seen;
-        result.reserve(_configuredPeers.size());
-        for (const auto& peer : _configuredPeers) {
+        const auto configuredPeers = SnapshotConfiguredPeers();
+        result.reserve(configuredPeers.size());
+        for (const auto& peer : configuredPeers) {
             if (excluded && SameEndpoint(peer, *excluded)) {
                 continue;
             }
@@ -1011,6 +1138,7 @@ namespace MorphSyncTogether
         while (
             !stopToken.stop_requested() &&
             _running.load()) {
+            RefreshSkyrimTogetherAutoConfig(false);
             SendHello();
             ExpirePeers();
 

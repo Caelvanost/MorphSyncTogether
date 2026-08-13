@@ -1,11 +1,34 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://qconsulting.ca/fo3/ModConfig5.0.xsd">
-  <moduleName>MorphSyncTogether 0.3.0</moduleName>
+  <moduleName>MorphSyncTogether 0.4.0</moduleName>
   <moduleImage path="fomod\ModuleImage.png" />
   <requiredInstallFiles>
     <folder source="00 Core" destination="" priority="0" />
   </requiredInstallFiles>
   <installSteps order="Explicit">
+    <installStep name="Internet role">
+      <optionalFileGroups order="Explicit">
+        <group name="Which machine is this?" type="SelectExactlyOne">
+          <plugins order="Explicit">
+            <plugin name="Client / LAN / no Internet relay">
+              <description>Default zero-config install. LAN discovery stays enabled, and remote Internet clients automatically reuse STR's saved direct-connect address when available.</description>
+              <typeDescriptor>
+                <type name="Recommended" />
+              </typeDescriptor>
+            </plugin>
+            <plugin name="Player1 host / Internet relay">
+              <description>Use this only on the Skyrim Together host that forwards UDP 27992. It enables MorphSync relay mode; clients can still stay on the default zero-config profile.</description>
+              <files>
+                <folder source="20 Internet Relay Host" destination="" priority="20" />
+              </files>
+              <typeDescriptor>
+                <type name="Optional" />
+              </typeDescriptor>
+            </plugin>
+          </plugins>
+        </group>
+      </optionalFileGroups>
+    </installStep>
     <installStep name="OPubes integration">
       <optionalFileGroups order="Explicit">
         <group name="Do you use OPubes?" type="SelectExactlyOne">

@@ -2,6 +2,6 @@
 <fomod>
   <Name>MorphSyncTogether</Name>
   <Author>Caelvanost</Author>
-  <Version>0.3.0</Version>
-  <Description>Synchronizes RaceMenu BodyMorphs and FaceGen makeup between Skyrim Together players over LAN or an authenticated Internet relay. OPubes synchronization is an optional FOMOD component.</Description>
+  <Version>0.4.0</Version>
+  <Description>Synchronizes RaceMenu BodyMorphs and FaceGen makeup between Skyrim Together players over LAN or Internet. Remote clients can automatically reuse Skyrim Together Reborn's saved direct-connect address; OPubes synchronization remains an optional FOMOD component.</Description>
 </fomod>

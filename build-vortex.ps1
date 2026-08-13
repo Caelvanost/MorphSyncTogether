@@ -9,6 +9,7 @@ $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Build = Join-Path $Root "build"
 $Package = Join-Path $Root "package"
 $OptionalOPubesPackage = Join-Path $Root "optional\OPubes\package"
+$OptionalRelayHostPackage = Join-Path $Root "optional\RelayHost\package"
 $FomodSource = Join-Path $Root "fomod"
 $Plugins = Join-Path $Package "Data\SKSE\Plugins"
 $Stage = [System.IO.Path]::GetFullPath((Join-Path $Build "fomod-stage"))
@@ -77,11 +78,12 @@ Copy-Item $dll.FullName (Join-Path $Plugins "MorphSyncTogether.dll") -Force
 
 $CoreIni = Join-Path $Plugins "MorphSyncTogether.ini"
 $OPubesIni = Join-Path $OptionalOPubesPackage "Data\SKSE\Plugins\MorphSyncTogether_OPubes.ini"
+$RelayHostIni = Join-Path $OptionalRelayHostPackage "Data\SKSE\Plugins\MorphSyncTogether_RelayHost.ini"
 $ModuleConfig = Join-Path $FomodSource "ModuleConfig.xml"
 $Info = Join-Path $FomodSource "info.xml"
 $ModuleImage = Join-Path $FomodSource "ModuleImage.png"
 
-foreach ($RequiredPath in @($CoreIni, $OPubesIni, $ModuleConfig, $Info, $ModuleImage)) {
+foreach ($RequiredPath in @($CoreIni, $OPubesIni, $RelayHostIni, $ModuleConfig, $Info, $ModuleImage)) {
     if (-not (Test-Path -LiteralPath $RequiredPath)) {
         throw "Fichier FOMOD requis introuvable: $RequiredPath"
     }
@@ -89,11 +91,15 @@ foreach ($RequiredPath in @($CoreIni, $OPubesIni, $ModuleConfig, $Info, $ModuleI
 
 $CoreIniContent = Get-Content -LiteralPath $CoreIni -Raw
 $OPubesIniContent = Get-Content -LiteralPath $OPubesIni -Raw
+$RelayHostIniContent = Get-Content -LiteralPath $RelayHostIni -Raw
 if ($CoreIniContent -notmatch '(?ms)^\[PubicOverlaySync\].*?^Enabled=0\s*$') {
     throw "Le profil FOMOD principal doit desactiver PubicOverlaySync."
 }
 if ($OPubesIniContent -notmatch '(?ms)^\[PubicOverlaySync\].*?^Enabled=1\s*$') {
     throw "Le profil FOMOD OPubes doit activer PubicOverlaySync."
+}
+if ($RelayHostIniContent -notmatch '(?ms)^\[Network\].*?^RelayMode=1\s*$') {
+    throw "Le profil FOMOD relais host doit activer RelayMode."
 }
 
 try {
@@ -113,14 +119,16 @@ if (Test-Path -LiteralPath $Stage) {
 
 $CoreStage = Join-Path $Stage "00 Core"
 $OPubesStage = Join-Path $Stage "10 OPubes"
+$RelayHostStage = Join-Path $Stage "20 Internet Relay Host"
 $FomodStage = Join-Path $Stage "fomod"
-New-Item -ItemType Directory -Force -Path $CoreStage, $OPubesStage, $FomodStage | Out-Null
+New-Item -ItemType Directory -Force -Path $CoreStage, $OPubesStage, $RelayHostStage, $FomodStage | Out-Null
 
 Copy-Item (Join-Path $Package "*") $CoreStage -Recurse -Force
 Copy-Item (Join-Path $OptionalOPubesPackage "*") $OPubesStage -Recurse -Force
+Copy-Item (Join-Path $OptionalRelayHostPackage "*") $RelayHostStage -Recurse -Force
 Copy-Item (Join-Path $FomodSource "*") $FomodStage -Recurse -Force
 
-$zip = Join-Path $Root "MorphSyncTogether-v0.3.0-FOMOD.zip"
+$zip = Join-Path $Root "MorphSyncTogether-v0.4.0-FOMOD.zip"
 if (Test-Path $zip) {
     Remove-Item $zip -Force
 }
@@ -138,6 +146,7 @@ try {
         "00 Core/Data/SKSE/Plugins/MorphSyncTogether.dll",
         "00 Core/Data/SKSE/Plugins/MorphSyncTogether.ini",
         "10 OPubes/Data/SKSE/Plugins/MorphSyncTogether_OPubes.ini",
+        "20 Internet Relay Host/Data/SKSE/Plugins/MorphSyncTogether_RelayHost.ini",
         "fomod/ModuleConfig.xml",
         "fomod/info.xml",
         "fomod/ModuleImage.png"
