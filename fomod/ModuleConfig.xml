@@ -16,8 +16,8 @@
                 <type name="Recommended" />
               </typeDescriptor>
             </plugin>
-            <plugin name="Player1 host / Internet relay">
-              <description>Use this only on the Skyrim Together host that forwards UDP 27992. It enables MorphSync relay mode; clients can still stay on the default zero-config profile.</description>
+            <plugin name="Player1 host / Internet relay - requires port forwarding">
+              <description>Use this only on the Skyrim Together host / Player1 machine. You must forward UDP port 27992 on your router/box to this PC and allow UDP 27992 in Windows Firewall. This enables MorphSync relay mode; clients can stay on the default zero-config profile.</description>
               <files>
                 <folder source="20 Internet Relay Host" destination="" priority="20" />
               </files>
