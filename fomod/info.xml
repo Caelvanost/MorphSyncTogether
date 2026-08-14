@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fomod>
+  <Name>MorphSyncTogether</Name>
+  <Author>Caelvanost</Author>
+  <Version>0.2.11</Version>
+  <Description>Synchronizes RaceMenu BodyMorphs and FaceGen makeup between Skyrim Together players. OPubes synchronization is an optional FOMOD component.</Description>
+</fomod>

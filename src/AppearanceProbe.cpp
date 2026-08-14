@@ -51,6 +51,149 @@ namespace MorphSyncTogether
             std::string text;
         };
 
+        class TypedCaptureVariant final : public SKEE::IOverrideInterface::GetVariant
+        {
+        public:
+            enum class Type
+            {
+                None,
+                Int,
+                Float,
+                String,
+                Bool,
+                TextureSet
+            };
+
+            void Int(const SKEE::i32 value) override
+            {
+                type = Type::Int;
+                intValue = value;
+            }
+
+            void Float(float value) override
+            {
+                type = Type::Float;
+                floatValue = value;
+            }
+
+            void String(const char* value) override
+            {
+                type = Type::String;
+                stringValue = value ? value : "";
+            }
+
+            void Bool(bool value) override
+            {
+                type = Type::Bool;
+                boolValue = value;
+            }
+
+            void TextureSet(const RE::BGSTextureSet* value) override
+            {
+                type = Type::TextureSet;
+                textureSetValue = value;
+            }
+
+            Type type{ Type::None };
+            SKEE::i32 intValue{ 0 };
+            float floatValue{ 0.0F };
+            std::string stringValue;
+            bool boolValue{ false };
+            const RE::BGSTextureSet* textureSetValue{ nullptr };
+        };
+
+        class OverrideSetVariant final : public SKEE::IOverrideInterface::SetVariant
+        {
+        public:
+            explicit OverrideSetVariant(SKEE::i32 value) :
+                _type(Type::Int),
+                _intValue(value)
+            {}
+
+            explicit OverrideSetVariant(float value) :
+                _type(Type::Float),
+                _floatValue(value)
+            {}
+
+            explicit OverrideSetVariant(std::string value) :
+                _type(Type::String),
+                _stringValue(std::move(value))
+            {}
+
+            Type GetType() override { return _type; }
+            SKEE::i32 Int() override { return _intValue; }
+            float Float() override { return _floatValue; }
+            const char* String() override { return _stringValue.c_str(); }
+
+        private:
+            Type _type{ Type::None };
+            SKEE::i32 _intValue{ 0 };
+            float _floatValue{ 0.0F };
+            std::string _stringValue;
+        };
+
+        std::string LowerPath(std::string_view value)
+        {
+            std::string result;
+            result.reserve(value.size());
+            for (const unsigned char ch : value) {
+                result.push_back(ch == '/' ? '\\' : static_cast<char>(std::tolower(ch)));
+            }
+            return result;
+        }
+
+        bool IsPubicTexturePath(std::string_view value)
+        {
+            const auto path = LowerPath(value);
+            return path.find("ak_rm_pubic_hair_all_in_one") != std::string::npos ||
+                   path.find("pubic") != std::string::npos ||
+                   path.find("pubes") != std::string::npos ||
+                   path.find("overlays\\hieroglyphics\\") != std::string::npos;
+        }
+
+        bool IsEmptyOverlayTexture(std::string_view value)
+        {
+            if (value.empty()) {
+                return true;
+            }
+            const auto path = LowerPath(value);
+            return path.ends_with("actors\\character\\overlays\\default.dds") ||
+                   path.ends_with("textures\\actors\\character\\overlays\\default.dds");
+        }
+
+        std::optional<std::uint32_t> ParseBodyOverlaySlot(std::string_view name)
+        {
+            const auto lowered = LowerPath(name);
+            constexpr std::string_view prefix = "body [ovl";
+            if (!lowered.starts_with(prefix) || lowered.size() <= prefix.size() + 1 ||
+                lowered.back() != ']') {
+                return std::nullopt;
+            }
+
+            try {
+                const auto value = std::stoul(
+                    lowered.substr(prefix.size(), lowered.size() - prefix.size() - 1));
+                if (value >= 64) {
+                    return std::nullopt;
+                }
+                return static_cast<std::uint32_t>(value);
+            } catch (...) {
+                return std::nullopt;
+            }
+        }
+
+        std::int32_t PackTintColor(const RE::NiColor& color)
+        {
+            const auto channel = [](float value) {
+                return static_cast<std::uint32_t>(std::lround(
+                    std::clamp(value, 0.0F, 1.0F) * 255.0F));
+            };
+            return static_cast<std::int32_t>(
+                (channel(color.red) << 16) |
+                (channel(color.green) << 8) |
+                channel(color.blue));
+        }
+
         std::string OverlayTypeName(SKEE::IOverlayInterface::OverlayType type)
         {
             return type == SKEE::IOverlayInterface::OverlayType::Normal ? "Normal" : "Spell";
@@ -136,9 +279,37 @@ namespace MorphSyncTogether
             std::uint32_t ordinal{ 0 };
             std::uint32_t slot{ 0 };
             RE::BSShaderMaterial::Feature feature{};
+            RE::BSGeometry* geometry{ nullptr };
             RE::BSShaderProperty* shader{ nullptr };
             RE::BSLightingShaderMaterialBase* base{ nullptr };
         };
+
+        struct MaterialRebindResult
+        {
+            bool setup{ false };
+            bool finish{ false };
+        };
+
+        MaterialRebindResult RebindLiveFaceMaterial(const LiveFaceMaterial& item)
+        {
+            if (!item.geometry || !item.shader) {
+                return {};
+            }
+
+            // RaceMenu refreshes a tint mask by invalidating its lighting
+            // shader and initializing the geometry again. CommonLib exposes
+            // that lifecycle through the shader-property virtuals below.
+            item.shader->DoClearRenderPasses();
+            item.geometry->SetMaterialNeedsUpdate(true);
+            const bool setup = item.shader->SetupGeometry(item.geometry);
+            const bool finish = setup && item.shader->FinishSetupGeometry(item.geometry);
+
+            // Retain the flag for Skyrim's next render traversal as well. The
+            // immediate setup above makes the operation deterministic on the
+            // game thread; the flag covers renderer-side deferred state.
+            item.geometry->SetMaterialNeedsUpdate(true);
+            return MaterialRebindResult{ setup, finish };
+        }
 
         bool IsFaceMaterialFeature(RE::BSShaderMaterial::Feature feature)
         {
@@ -185,7 +356,7 @@ namespace MorphSyncTogether
                             const std::string nodeName = rawName ? rawName : "";
                             const auto ordinalKey = fmt::format("{}|{}|{}", nodeName, slot, static_cast<std::uint32_t>(feature));
                             const auto ordinal = ordinals[ordinalKey]++;
-                            out.push_back(LiveFaceMaterial{ nodeName, ordinal, slot, feature, shader, base });
+                            out.push_back(LiveFaceMaterial{ nodeName, ordinal, slot, feature, geometry, shader, base });
                         }
                     }
                 }
@@ -222,18 +393,12 @@ namespace MorphSyncTogether
         if (auto* base = interfaceMap->QueryInterface("Override")) {
             _override = static_cast<SKEE::IOverrideInterface*>(base);
         }
-        if (auto* base = interfaceMap->QueryInterface("Preset")) {
-            _preset = static_cast<SKEE::IPresetInterface*>(base);
-        }
-
         SKSE::log::info(
-            "MST APPEARANCE interfaces READY overlay={} overlayVersion={} override={} overrideVersion={} preset={} presetVersion={} mode=probe+racemenu-preset-guard+facegen-refresh-fallback",
+            "MST APPEARANCE interfaces READY overlay={} overlayVersion={} override={} overrideVersion={} mode=probe+face-material-rebind+pubic-overlay",
             _overlay ? 1 : 0,
             _overlay ? _overlay->GetVersion() : 0,
             _override ? 1 : 0,
-            _override ? _override->GetVersion() : 0,
-            _preset ? 1 : 0,
-            _preset ? _preset->GetVersion() : 0);
+            _override ? _override->GetVersion() : 0);
     }
 
     void AppearanceProbe::Configure(
@@ -242,35 +407,29 @@ namespace MorphSyncTogether
         bool verbose,
         bool preserveRemote,
         std::uint32_t recoveryAttempts,
-        bool refreshOnTintDrift,
-        bool regenerateHeadFallback,
-        std::uint32_t refreshCooldownMs,
-        bool presetGuardEnabled,
-        std::uint32_t presetReloadCooldownMs)
+        bool materialRebindEnabled,
+        std::uint32_t materialRebindFollowups,
+        std::uint32_t materialRebindIntervalMs)
     {
         _enabled = enabled;
         _intervalMs = std::clamp<std::uint32_t>(intervalMs, 250, 10000);
         _verbose = verbose;
         _preserveRemote = preserveRemote;
         _recoveryAttempts = std::clamp<std::uint32_t>(recoveryAttempts, 1, 10);
-        _refreshOnTintDrift = refreshOnTintDrift;
-        _regenerateHeadFallback = regenerateHeadFallback;
-        _refreshCooldownMs = std::clamp<std::uint32_t>(refreshCooldownMs, 1000, 10000);
-        _presetGuardEnabled = presetGuardEnabled;
-        _presetReloadCooldownMs = std::clamp<std::uint32_t>(presetReloadCooldownMs, 250, 10000);
+        _materialRebindEnabled = materialRebindEnabled;
+        _materialRebindFollowups = std::clamp<std::uint32_t>(materialRebindFollowups, 1, 10);
+        _materialRebindIntervalMs = std::clamp<std::uint32_t>(materialRebindIntervalMs, 100, 2000);
 
         SKSE::log::info(
-            "MST APPEARANCE configured enabled={} interval={}ms verbose={} preserveRemote={} recoveryAttempts={} presetGuard={} presetReloadCooldown={}ms refreshOnTintDrift={} regenerateHeadFallback={} refreshCooldown={}ms",
+            "MST APPEARANCE configured enabled={} interval={}ms verbose={} preserveRemote={} recoveryAttempts={} materialRebind={} rebindFollowups={} rebindInterval={}ms",
             _enabled ? 1 : 0,
             _intervalMs,
             _verbose ? 1 : 0,
             _preserveRemote ? 1 : 0,
             _recoveryAttempts,
-            _presetGuardEnabled ? 1 : 0,
-            _presetReloadCooldownMs,
-            _refreshOnTintDrift ? 1 : 0,
-            _regenerateHeadFallback ? 1 : 0,
-            _refreshCooldownMs);
+            _materialRebindEnabled ? 1 : 0,
+            _materialRebindFollowups,
+            _materialRebindIntervalMs);
     }
 
     void AppearanceProbe::Reset()
@@ -304,6 +463,231 @@ namespace MorphSyncTogether
             sender,
             actor,
             nullptr);
+    }
+
+    std::optional<AppearanceProbe::PubicOverlayState>
+    AppearanceProbe::CapturePubicOverlay(RE::Actor* actor) const
+    {
+        if (!actor || !actor->Get3D()) {
+            return std::nullopt;
+        }
+
+        SKEE::IOverlayInterface* overlay = nullptr;
+        SKEE::IOverrideInterface* overrides = nullptr;
+        {
+            std::scoped_lock lock(_interfaceMutex);
+            overlay = _overlay;
+            overrides = _override;
+        }
+        if (!overlay || !overrides) {
+            return std::nullopt;
+        }
+
+        auto* base = actor->GetActorBase();
+        const bool female = base && base->GetSex() == RE::SEXES::kFemale;
+        const auto slotCount = std::min<std::uint32_t>(
+            overlay->GetOverlayCount(
+                SKEE::IOverlayInterface::OverlayType::Normal,
+                SKEE::IOverlayInterface::OverlayLocation::Body),
+            64);
+        if (slotCount == 0) {
+            return std::nullopt;
+        }
+
+        PubicOverlayState empty{};
+        empty.female = female;
+
+        // Prefer RaceMenu's authoritative override storage. This preserves the
+        // exact packed tint value selected by OPubesRaceMenuSelector.
+        for (std::uint32_t slot = 0; slot < slotCount; ++slot) {
+            const auto node = fmt::format("Body [Ovl{}]", slot);
+            TypedCaptureVariant texture;
+            if (!overrides->GetNodeOverride(actor, female, node.c_str(), 9, 0, texture) ||
+                texture.type != TypedCaptureVariant::Type::String ||
+                !IsPubicTexturePath(texture.stringValue)) {
+                continue;
+            }
+
+            PubicOverlayState result{};
+            result.present = true;
+            result.female = female;
+            result.sourceSlot = slot;
+            result.texturePath = texture.stringValue;
+
+            TypedCaptureVariant color;
+            if (overrides->GetNodeOverride(actor, female, node.c_str(), 7, kNoIndex, color) &&
+                color.type == TypedCaptureVariant::Type::Int) {
+                result.color = color.intValue;
+            }
+
+            TypedCaptureVariant alpha;
+            if (overrides->GetNodeOverride(actor, female, node.c_str(), 8, kNoIndex, alpha) &&
+                alpha.type == TypedCaptureVariant::Type::Float &&
+                std::isfinite(alpha.floatValue)) {
+                result.alpha = std::clamp(alpha.floatValue, 0.0F, 1.0F);
+            }
+            return result;
+        }
+
+        // Some RaceMenu paths have already materialized the node while the
+        // stored override is temporarily unavailable. Fall back to the live
+        // Body [Ovl#] lighting material so a visible pube is never announced
+        // as a shaved/empty state.
+        std::optional<PubicOverlayState> liveResult;
+        std::function<void(RE::NiAVObject*)> visit;
+        visit = [&](RE::NiAVObject* object) {
+            if (!object || liveResult) {
+                return;
+            }
+
+            const char* rawName = object->name.c_str();
+            const std::string_view name = rawName ? std::string_view(rawName) : std::string_view{};
+            const auto slot = ParseBodyOverlaySlot(name);
+            if (slot && *slot < slotCount) {
+                if (auto* geometry = object->AsGeometry()) {
+                    auto& runtime = geometry->GetGeometryRuntimeData();
+                    for (const auto propertySlot :
+                         { RE::BSGeometry::States::kProperty, RE::BSGeometry::States::kEffect }) {
+                        auto* property = runtime.properties[propertySlot].get();
+                        auto* shader = property ? skyrim_cast<RE::BSLightingShaderProperty*>(property) : nullptr;
+                        auto* material = shader && shader->material ?
+                            static_cast<RE::BSLightingShaderMaterialBase*>(shader->material) : nullptr;
+                        if (!material) {
+                            continue;
+                        }
+
+                        std::string texturePath;
+                        if (material->textureSet) {
+                            const char* path = material->textureSet->GetTexturePath(
+                                RE::BSTextureSet::Texture::kDiffuse);
+                            texturePath = path ? path : "";
+                        }
+                        if (texturePath.empty() && material->diffuseTexture) {
+                            const char* path = material->diffuseTexture->name.c_str();
+                            texturePath = path ? path : "";
+                        }
+                        if (!IsPubicTexturePath(texturePath)) {
+                            continue;
+                        }
+
+                        PubicOverlayState result{};
+                        result.present = true;
+                        result.female = female;
+                        result.sourceSlot = *slot;
+                        result.texturePath = std::move(texturePath);
+                        result.alpha = std::clamp(material->materialAlpha, 0.0F, 1.0F);
+                        if (material->GetFeature() ==
+                            RE::BSShaderMaterial::Feature::kFaceGenRGBTint) {
+                            const auto* tinted = static_cast<
+                                RE::BSLightingShaderMaterialFacegenTint*>(material);
+                            result.color = PackTintColor(tinted->tintColor);
+                        }
+                        liveResult = std::move(result);
+                        return;
+                    }
+                }
+            }
+
+            if (auto* node = object->AsNode()) {
+                for (auto& child : node->GetChildren()) {
+                    if (child) {
+                        visit(child.get());
+                    }
+                }
+            }
+        };
+        visit(actor->Get3D());
+        return liveResult ? liveResult : std::optional<PubicOverlayState>{ empty };
+    }
+
+    bool AppearanceProbe::ApplyPubicOverlay(
+        RE::Actor* actor,
+        const PubicOverlayState& state)
+    {
+        if (!actor || !actor->Get3D()) {
+            return false;
+        }
+
+        SKEE::IOverlayInterface* overlay = nullptr;
+        SKEE::IOverrideInterface* overrides = nullptr;
+        {
+            std::scoped_lock lock(_interfaceMutex);
+            overlay = _overlay;
+            overrides = _override;
+        }
+        if (!overlay || !overrides) {
+            return false;
+        }
+
+        const auto slotCount = std::min<std::uint32_t>(
+            overlay->GetOverlayCount(
+                SKEE::IOverlayInterface::OverlayType::Normal,
+                SKEE::IOverlayInterface::OverlayLocation::Body),
+            64);
+        if (slotCount == 0) {
+            return false;
+        }
+
+        auto* base = actor->GetActorBase();
+        const bool female = base && base->GetSex() == RE::SEXES::kFemale;
+        const auto current = CapturePubicOverlay(actor);
+
+        std::optional<std::uint32_t> targetSlot;
+        if (current && current->present) {
+            // Replace the locally-randomized OPubes slot instead of consuming a
+            // second body slot or touching an unrelated tattoo/OCum overlay.
+            targetSlot = current->sourceSlot;
+        } else if (state.present) {
+            auto slotIsEmpty = [&](std::uint32_t slot) {
+                const auto node = fmt::format("Body [Ovl{}]", slot);
+                TypedCaptureVariant texture;
+                if (!overrides->GetNodeOverride(actor, female, node.c_str(), 9, 0, texture) ||
+                    texture.type != TypedCaptureVariant::Type::String) {
+                    return true;
+                }
+                return IsEmptyOverlayTexture(texture.stringValue);
+            };
+
+            if (state.sourceSlot < slotCount && slotIsEmpty(state.sourceSlot)) {
+                targetSlot = state.sourceSlot;
+            } else {
+                for (std::uint32_t slot = 0; slot < slotCount; ++slot) {
+                    if (slotIsEmpty(slot)) {
+                        targetSlot = slot;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!targetSlot) {
+            // An absent authoritative state with no local pubic overlay already
+            // matches. A present state must not overwrite a non-pubic overlay
+            // when all body slots are occupied.
+            return !state.present;
+        }
+
+        if (!overlay->HasOverlays(actor)) {
+            overlay->AddOverlays(actor, true);
+        }
+
+        const auto node = fmt::format("Body [Ovl{}]", *targetSlot);
+        OverrideSetVariant texture(state.present ?
+            state.texturePath : std::string("actors\\character\\overlays\\default.dds"));
+        OverrideSetVariant color(state.present ? state.color : 0);
+        OverrideSetVariant alpha(state.present ?
+            std::clamp(state.alpha, 0.0F, 1.0F) : 0.0F);
+        OverrideSetVariant zeroInt(static_cast<SKEE::i32>(0));
+        OverrideSetVariant zeroFloat(0.0F);
+
+        overrides->AddNodeOverride(actor, female, node.c_str(), 9, 0, texture);
+        overrides->AddNodeOverride(actor, female, node.c_str(), 7, kNoIndex, color);
+        overrides->AddNodeOverride(actor, female, node.c_str(), 0, kNoIndex, zeroInt);
+        overrides->AddNodeOverride(actor, female, node.c_str(), 8, kNoIndex, alpha);
+        overrides->AddNodeOverride(actor, female, node.c_str(), 2, kNoIndex, zeroFloat);
+        overrides->AddNodeOverride(actor, female, node.c_str(), 3, kNoIndex, zeroFloat);
+        overrides->SetNodeProperties(actor, true);
+        return true;
     }
 
     void AppearanceProbe::Probe(
@@ -357,30 +741,22 @@ namespace MorphSyncTogether
             // the network identity so it survives FFxxxxxx proxy replacement.
             const auto appearanceKey = fmt::format("REMOTE:{}", label);
 
-            if (data.skeeHasOverlays && data.sceneOverlayNodes > 0) {
-                CacheHealthyRemoteAppearance(appearanceKey, label, actor, data);
-            }
+            // A baked FaceGen tint is independent of RaceMenu overlay nodes.
+            // Elir's STR proxy legitimately reports skeeOverlays=0 and
+            // sceneOverlayNodes=0 while exposing a ready kFaceGen material.
+            // CacheHealthyRemoteAppearance performs the actual readiness check
+            // by requiring a non-null FaceGen tint texture.
+            CacheHealthyRemoteAppearance(appearanceKey, label, actor, data);
 
             // OStim can replace the FaceGen tint texture while SKEE overlays
-            // remain fully present. v0.2.5 still restores the immutable
-            // baseline pointer, then asks SKSE to rebuild the actor NiNode.
-            const auto restoredTintCount = GuardFaceGenTintTextures(appearanceKey, label, actor);
-            bool facePresetReloaded = false;
-            if (restoredTintCount > 0) {
-                facePresetReloaded = ReloadRaceMenuFacePreset(appearanceKey, label, actor, true);
-            }
-            // The RaceMenu preset+tint DDS path is authoritative in v0.2.6.
-            // Only fall back to the v0.2.5 NiNode/RegenerateHead experiment if
-            // RaceMenu could not reload the cached face preset.
-            if (!facePresetReloaded) {
-                HandleFaceGenRefresh(appearanceKey, label, actor, restoredTintCount);
-            }
-            RunFaceGenRefreshFollowup(appearanceKey, label, actor);
+            // remain fully present. Restore the immutable pointer and rebind
+            // the live shader material so the render state sees that change.
+            GuardFaceGenTintTextures(appearanceKey, label, actor);
+            RunFaceMaterialRebindFollowup(appearanceKey, label, actor);
 
             if (!first &&
                 (previousHasOverlays || previousOverlayNodes > 0) &&
                 (!data.skeeHasOverlays || data.sceneOverlayNodes == 0)) {
-                ReloadRaceMenuFacePreset(appearanceKey, label, actor, true);
                 BeginRemoteRecovery(appearanceKey, label, actor);
             }
 
@@ -728,7 +1104,11 @@ namespace MorphSyncTogether
                 tint->tintColor = snapshot.tintColor;
             }
 
-            item.shader->DoClearRenderPasses();
+            if (_materialRebindEnabled) {
+                RebindLiveFaceMaterial(item);
+            } else {
+                item.shader->DoClearRenderPasses();
+            }
             ++restored;
         }
 
@@ -743,6 +1123,17 @@ namespace MorphSyncTogether
     {
         const auto materials = CaptureFaceMaterials(actor);
         if (materials.empty()) {
+            return;
+        }
+
+        const auto faceGenTintMaterials = static_cast<std::uint32_t>(std::count_if(
+            materials.begin(),
+            materials.end(),
+            [](const FaceMaterialSnapshot& material) {
+                return material.feature == RE::BSShaderMaterial::Feature::kFaceGen &&
+                       material.hasTintTexture && material.tintTexture;
+            }));
+        if (faceGenTintMaterials == 0) {
             return;
         }
 
@@ -767,28 +1158,27 @@ namespace MorphSyncTogether
                 cache.valid = true;
                 cache.recoveryPending = false;
                 cache.recoveryAttemptsLeft = 0;
-                cache.refreshStage = 0;
-                cache.refreshFollowupAttemptsLeft = 0;
+                cache.materialRebindFollowupsLeft = 0;
+                cache.materialRebindNotBefore = {};
                 baselineForLog = cache.faceMaterials;
             } else if (reboundActor) {
                 cache.actorFormID = actor->GetFormID();
                 cache.recoveryPending = false;
                 cache.recoveryAttemptsLeft = 0;
-                cache.refreshStage = 0;
-                cache.refreshFollowupAttemptsLeft = 0;
-                cache.lastRefreshRequestAt = {};
-                cache.lastTintDriftAt = {};
-                cache.refreshFollowupNotBefore = {};
+                cache.materialRebindFollowupsLeft = 0;
+                cache.materialRebindNotBefore = {};
                 baselineForLog = cache.faceMaterials;
             }
         }
 
         if (firstCache) {
             SKSE::log::info(
-                "MST APPEARANCE BASELINE label=\"{}\" actor={:08X} materials={} overlayNodes={} identityKey=stable",
+                "MST APPEARANCE BASELINE label=\"{}\" actor={:08X} materials={} faceGenTintMaterials={} skeeOverlays={} overlayNodes={} eligibility=facegen-tint-ready identityKey=stable",
                 label,
                 actor->GetFormID(),
                 baselineForLog.size(),
+                faceGenTintMaterials,
+                data.skeeHasOverlays ? 1 : 0,
                 data.sceneOverlayNodes);
 
             if (_verbose) {
@@ -819,13 +1209,9 @@ namespace MorphSyncTogether
                 baselineForLog.size());
         }
 
-        // Save through RaceMenu's public Preset interface while the proxy is
-        // still visually healthy. This captures the generated face tint DDS
-        // that pointer-only material snapshots cannot recreate. Retry on later
-        // healthy ticks if the first save fails.
-        SaveRaceMenuFaceBaseline(key, label, actor);
     }
 
+#if 0  // Removed in v0.2.8: RaceMenu 0.4.20 does not publish "Preset" through IInterfaceMap.
     std::string AppearanceProbe::SanitizeCacheName(std::string_view label)
     {
         std::string out;
@@ -1020,6 +1406,8 @@ namespace MorphSyncTogether
         return loaded;
     }
 
+#endif
+
     std::uint32_t AppearanceProbe::GuardFaceGenTintTextures(
         const std::string& key,
         std::string_view label,
@@ -1059,6 +1447,9 @@ namespace MorphSyncTogether
         VisitLiveFaceMaterials(actor->Get3D(), ordinals, live);
 
         std::uint32_t restored = 0;
+        std::uint32_t rebound = 0;
+        std::uint32_t setupSucceeded = 0;
+        std::uint32_t finishSucceeded = 0;
         for (const auto& item : live) {
             if (!item.base || !item.shader ||
                 item.feature != RE::BSShaderMaterial::Feature::kFaceGen) {
@@ -1079,7 +1470,7 @@ namespace MorphSyncTogether
             }
 
             SKSE::log::info(
-                "MST FACEGEN TINT DRIFT label=\"{}\" actor={:08X} node=\"{}\" slot={} ordinal={} baseline={:p} live={:p} action=restore",
+                "MST FACEGEN TINT DRIFT label=\"{}\" actor={:08X} node=\"{}\" slot={} ordinal={} baseline={:p} live={:p} action=restore+rebind",
                 label,
                 actor->GetFormID(),
                 item.nodeName,
@@ -1093,21 +1484,47 @@ namespace MorphSyncTogether
             // diffuse/texture set and all RaceMenu overlay materials are left
             // alone so OCum and other scene overlays can coexist.
             facegen->tintTexture = snapshot.tintTexture;
-            item.shader->DoClearRenderPasses();
+            if (_materialRebindEnabled) {
+                const auto result = RebindLiveFaceMaterial(item);
+                if (item.geometry) {
+                    ++rebound;
+                }
+                setupSucceeded += result.setup ? 1u : 0u;
+                finishSucceeded += result.finish ? 1u : 0u;
+            } else {
+                item.shader->DoClearRenderPasses();
+            }
             ++restored;
         }
 
         if (restored > 0) {
+            if (_materialRebindEnabled) {
+                const auto now = std::chrono::steady_clock::now();
+                std::scoped_lock lock(_stateMutex);
+                const auto it = _appearanceCaches.find(key);
+                if (it != _appearanceCaches.end() && it->second.valid &&
+                    it->second.actorFormID == actor->GetFormID()) {
+                    it->second.materialRebindFollowupsLeft = _materialRebindFollowups;
+                    it->second.materialRebindNotBefore =
+                        now + std::chrono::milliseconds(_materialRebindIntervalMs);
+                }
+            }
+
             SKSE::log::info(
-                "MST FACEGEN TINT GUARD label=\"{}\" actor={:08X} restored={}",
+                "MST FACEGEN MATERIAL REBIND label=\"{}\" actor={:08X} restored={} rebound={} setup={} finish={} followups={}",
                 label,
                 actor->GetFormID(),
-                restored);
+                restored,
+                rebound,
+                setupSucceeded,
+                finishSucceeded,
+                _materialRebindEnabled ? _materialRebindFollowups : 0);
         }
 
         return restored;
     }
 
+#if 0  // Removed in v0.2.8: full NiNode/head regeneration did not restore rendered makeup.
     bool AppearanceProbe::DispatchActorPapyrusNoArgs(
         RE::Actor* actor,
         std::string_view functionName) const
@@ -1341,6 +1758,65 @@ namespace MorphSyncTogether
             cacheCopy.refreshStage,
             overlaysBefore ? 1 : 0,
             overlaysAfter ? 1 : 0,
+            restoredMaterials,
+            attemptsLeft);
+    }
+
+#endif
+
+    void AppearanceProbe::RunFaceMaterialRebindFollowup(
+        const std::string& key,
+        std::string_view label,
+        RE::Actor* actor)
+    {
+        if (!_materialRebindEnabled || !actor) {
+            return;
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        AppearanceCache cacheCopy;
+        {
+            std::scoped_lock lock(_stateMutex);
+            const auto it = _appearanceCaches.find(key);
+            if (it == _appearanceCaches.end() || !it->second.valid ||
+                it->second.actorFormID != actor->GetFormID() ||
+                it->second.materialRebindFollowupsLeft == 0 ||
+                now < it->second.materialRebindNotBefore) {
+                return;
+            }
+            cacheCopy = it->second;
+        }
+
+        if (!actor->Get3D()) {
+            SKSE::log::info(
+                "MST FACEGEN MATERIAL REBIND FOLLOWUP label=\"{}\" actor={:08X} result=wait-3d attemptsLeft={}",
+                label,
+                actor->GetFormID(),
+                cacheCopy.materialRebindFollowupsLeft);
+            return;
+        }
+
+        const auto restoredMaterials = RestoreFaceMaterials(actor, cacheCopy.faceMaterials);
+        std::uint32_t attemptsLeft = 0;
+        {
+            std::scoped_lock lock(_stateMutex);
+            const auto it = _appearanceCaches.find(key);
+            if (it != _appearanceCaches.end() && it->second.valid &&
+                it->second.actorFormID == actor->GetFormID()) {
+                auto& cache = it->second;
+                if (cache.materialRebindFollowupsLeft > 0) {
+                    --cache.materialRebindFollowupsLeft;
+                }
+                attemptsLeft = cache.materialRebindFollowupsLeft;
+                cache.materialRebindNotBefore =
+                    now + std::chrono::milliseconds(_materialRebindIntervalMs);
+            }
+        }
+
+        SKSE::log::info(
+            "MST FACEGEN MATERIAL REBIND FOLLOWUP label=\"{}\" actor={:08X} materials={} attemptsLeft={}",
+            label,
+            actor->GetFormID(),
             restoredMaterials,
             attemptsLeft);
     }

@@ -49,6 +49,23 @@ namespace MorphSyncTogether
             }
         }
 
+        std::optional<std::uint32_t> ParseHex32(
+            const std::optional<std::string>& text)
+        {
+            if (!text || text->empty()) {
+                return std::nullopt;
+            }
+            try {
+                const auto value = std::stoull(*text, nullptr, 16);
+                if (value > std::numeric_limits<std::uint32_t>::max()) {
+                    return std::nullopt;
+                }
+                return static_cast<std::uint32_t>(value);
+            } catch (...) {
+                return std::nullopt;
+            }
+        }
+
         std::optional<std::size_t> ParseSize(const std::optional<std::string>& text)
         {
             if (!text || text->empty()) {
@@ -60,6 +77,31 @@ namespace MorphSyncTogether
             } catch (...) {
                 return std::nullopt;
             }
+        }
+
+        bool PubicOverlayEquivalent(
+            const AppearanceProbe::PubicOverlayState& lhs,
+            const AppearanceProbe::PubicOverlayState& rhs)
+        {
+            if (lhs.present != rhs.present) {
+                return false;
+            }
+            if (!lhs.present) {
+                return true;
+            }
+
+            const auto equalPath = lhs.texturePath.size() == rhs.texturePath.size() &&
+                std::equal(
+                    lhs.texturePath.begin(), lhs.texturePath.end(), rhs.texturePath.begin(),
+                    [](char a, char b) {
+                        const auto normalize = [](char value) {
+                            return value == '/' ? '\\' : static_cast<char>(
+                                std::tolower(static_cast<unsigned char>(value)));
+                        };
+                        return normalize(a) == normalize(b);
+                    });
+            return equalPath && lhs.color == rhs.color &&
+                   std::abs(lhs.alpha - rhs.alpha) <= 0.01F;
         }
     }
 
@@ -139,11 +181,9 @@ namespace MorphSyncTogether
             _config.appearanceProbeVerbose,
             _config.appearancePreserveRemote,
             _config.appearanceRecoveryAttempts,
-            _config.appearanceRefreshOnTintDrift,
-            _config.appearanceRegenerateHeadFallback,
-            _config.appearanceRefreshCooldownMs,
-            _config.raceMenuPresetGuardEnabled,
-            _config.raceMenuPresetReloadCooldownMs);
+            _config.faceMaterialRebindEnabled,
+            _config.faceMaterialRebindFollowups,
+            _config.faceMaterialRebindIntervalMs);
 
         _running.store(true);
         _syncThread = std::jthread([this](std::stop_token token) {
@@ -151,11 +191,12 @@ namespace MorphSyncTogether
         });
 
         SKSE::log::info(
-            "Morph sync started interval={}ms resend={}ms remoteReapply={}ms clearRemote={}",
+            "Morph sync started interval={}ms resend={}ms remoteReapply={}ms clearRemote={} pubicOverlaySync={}",
             _config.syncIntervalMs,
             _config.fullResendMs,
             _config.remoteReapplyMs,
-            _config.clearRemoteMorphs ? 1 : 0);
+            _config.clearRemoteMorphs ? 1 : 0,
+            _config.pubicOverlaySyncEnabled ? 1 : 0);
 
         QueueTick();
     }
@@ -180,11 +221,15 @@ namespace MorphSyncTogether
         _lastSentHash = 0;
         _lastSentName.clear();
         _lastSentAt = {};
+        _lastSentPubicHash = 0;
+        _lastSentPubicName.clear();
+        _lastSentPubicAt = {};
 
         {
             std::scoped_lock lock(_remoteMutex);
             _assemblies.clear();
             _remoteSnapshots.clear();
+            _remotePubicSnapshots.clear();
         }
 
         AppearanceProbe::GetSingleton().Reset();
@@ -261,20 +306,41 @@ namespace MorphSyncTogether
             _lastSentAt = now;
         }
 
-        std::vector<std::string> senders;
-        {
-            std::scoped_lock lock(_remoteMutex);
-            senders.reserve(_remoteSnapshots.size());
-            for (const auto& [sender, snapshot] : _remoteSnapshots) {
-                senders.push_back(sender);
+        if (_config.pubicOverlaySyncEnabled) {
+            const auto pubic = AppearanceProbe::GetSingleton().CapturePubicOverlay(player);
+            if (pubic) {
+                const auto pubicHash = HashPubicOverlay(*pubic);
+                const bool pubicNameChanged = playerName != _lastSentPubicName;
+                const bool pubicHashChanged = pubicHash != _lastSentPubicHash;
+                const bool pubicResendDue =
+                    _lastSentPubicAt.time_since_epoch().count() == 0 ||
+                    now - _lastSentPubicAt >= std::chrono::milliseconds(_config.fullResendMs);
+                if (pubicNameChanged || pubicHashChanged || pubicResendDue) {
+                    BroadcastPubicOverlay(player, *pubic, pubicHash);
+                    _lastSentPubicName = playerName;
+                    _lastSentPubicHash = pubicHash;
+                    _lastSentPubicAt = now;
+                }
             }
         }
 
-        for (const auto& sender : senders) {
+        std::unordered_set<std::string> senderSet;
+        {
+            std::scoped_lock lock(_remoteMutex);
+            for (const auto& [sender, snapshot] : _remoteSnapshots) {
+                senderSet.insert(sender);
+            }
+            for (const auto& [sender, snapshot] : _remotePubicSnapshots) {
+                senderSet.insert(sender);
+            }
+        }
+
+        for (const auto& sender : senderSet) {
             if (auto* proxy = ResolveRemoteProxyByName(sender)) {
                 AppearanceProbe::GetSingleton().ProbeRemoteProxy(sender, proxy);
             }
             TryApplyRemote(sender, false);
+            TryApplyRemotePubic(sender, false);
         }
 
         // Drop incomplete chunk assemblies after 15 seconds.
@@ -409,6 +475,68 @@ namespace MorphSyncTogether
         }
     }
 
+    std::uint64_t MorphSyncService::HashPubicOverlay(
+        const AppearanceProbe::PubicOverlayState& state) const
+    {
+        std::uint64_t hash = 1469598103934665603ULL;
+        constexpr std::uint64_t prime = 1099511628211ULL;
+        auto feedByte = [&](std::uint8_t value) {
+            hash ^= value;
+            hash *= prime;
+        };
+
+        feedByte(state.present ? 1 : 0);
+        feedByte(state.female ? 1 : 0);
+        for (std::uint32_t shift = 0; shift < 32; shift += 8) {
+            feedByte(static_cast<std::uint8_t>((state.sourceSlot >> shift) & 0xFF));
+        }
+        for (const unsigned char ch : state.texturePath) {
+            feedByte(ch);
+        }
+        feedByte(0xFF);
+        const auto color = static_cast<std::uint32_t>(state.color);
+        for (std::uint32_t shift = 0; shift < 32; shift += 8) {
+            feedByte(static_cast<std::uint8_t>((color >> shift) & 0xFF));
+        }
+        const auto alpha = std::bit_cast<std::uint32_t>(state.alpha);
+        for (std::uint32_t shift = 0; shift < 32; shift += 8) {
+            feedByte(static_cast<std::uint8_t>((alpha >> shift) & 0xFF));
+        }
+        return hash == 0 ? 1 : hash;
+    }
+
+    void MorphSyncService::BroadcastPubicOverlay(
+        RE::PlayerCharacter* player,
+        const AppearanceProbe::PubicOverlayState& state,
+        std::uint64_t hash)
+    {
+        if (!player || !UdpTransport::GetSingleton().IsRunning()) {
+            return;
+        }
+
+        SKSE::log::info(
+            "MST PUBES TX player={:08X} name=\"{}\" present={} female={} slot={} texture=\"{}\" color={:08X} alpha={:.4f} hash={:016X}",
+            player->GetFormID(),
+            player->GetName(),
+            state.present ? 1 : 0,
+            state.female ? 1 : 0,
+            state.sourceSlot,
+            state.texturePath,
+            static_cast<std::uint32_t>(state.color),
+            state.alpha,
+            hash);
+
+        UdpTransport::GetSingleton().Send(fmt::format(
+            "PUBES|hash={:016X}|present={}|female={}|slot={}|texture={}|color={:08X}|alpha={:.9g}",
+            hash,
+            state.present ? 1 : 0,
+            state.female ? 1 : 0,
+            state.sourceSlot,
+            HexEncode(state.texturePath),
+            static_cast<std::uint32_t>(state.color),
+            state.alpha));
+    }
+
     void MorphSyncService::HandleUdpPacket(std::string packet)
     {
         constexpr std::string_view prefix = "MSTUDP|v1|";
@@ -422,12 +550,16 @@ namespace MorphSyncTogether
             return;
         }
 
-        const auto morphPos = packet.find("|MORPH|");
-        if (morphPos == std::string::npos) {
+        const auto pubicPos = packet.find("|PUBES|");
+        if (pubicPos != std::string::npos) {
+            HandlePubicPacket(*sender, std::string_view(packet).substr(pubicPos + 1));
             return;
         }
 
-        HandleMorphPacket(*sender, std::string_view(packet).substr(morphPos + 1));
+        const auto morphPos = packet.find("|MORPH|");
+        if (morphPos != std::string::npos) {
+            HandleMorphPacket(*sender, std::string_view(packet).substr(morphPos + 1));
+        }
     }
 
     void MorphSyncService::HandleMorphPacket(
@@ -540,6 +672,85 @@ namespace MorphSyncTogether
         TryApplyRemote(sender, true);
     }
 
+    void MorphSyncService::HandlePubicPacket(
+        std::string_view senderView,
+        std::string_view payload)
+    {
+        if (!_config.pubicOverlaySyncEnabled) {
+            return;
+        }
+
+        const std::string sender(senderView);
+        const auto hash = ParseHex64(ReadField(payload, "hash"));
+        const auto present = ParseSize(ReadField(payload, "present"));
+        const auto female = ParseSize(ReadField(payload, "female"));
+        const auto slot = ParseSize(ReadField(payload, "slot"));
+        const auto textureField = ReadField(payload, "texture");
+        const auto color = ParseHex32(ReadField(payload, "color"));
+        const auto alphaField = ReadField(payload, "alpha");
+
+        if (hash == 0 || !present || *present > 1 || !female || *female > 1 ||
+            !slot || *slot >= 64 || !textureField || !color || !alphaField) {
+            SKSE::log::warn("MST PUBES RX invalid packet sender=\"{}\"", sender);
+            return;
+        }
+
+        const auto texture = HexDecode(*textureField);
+        float alpha = 0.0F;
+        try {
+            alpha = std::stof(*alphaField);
+        } catch (...) {
+            SKSE::log::warn("MST PUBES RX invalid alpha sender=\"{}\"", sender);
+            return;
+        }
+        if (!texture || texture->size() > 512 || !std::isfinite(alpha) ||
+            (*present != 0 && texture->empty())) {
+            SKSE::log::warn("MST PUBES RX invalid values sender=\"{}\"", sender);
+            return;
+        }
+
+        AppearanceProbe::PubicOverlayState state{};
+        state.present = *present != 0;
+        state.female = *female != 0;
+        state.sourceSlot = static_cast<std::uint32_t>(*slot);
+        state.texturePath = *texture;
+        state.color = static_cast<std::int32_t>(*color);
+        state.alpha = std::clamp(alpha, 0.0F, 1.0F);
+
+        const auto dataHash = HashPubicOverlay(state);
+        if (dataHash != hash) {
+            SKSE::log::warn(
+                "MST PUBES RX hash mismatch sender=\"{}\" net={:016X} data={:016X}",
+                sender,
+                hash,
+                dataHash);
+            return;
+        }
+
+        {
+            std::scoped_lock lock(_remoteMutex);
+            auto& snapshot = _remotePubicSnapshots[sender];
+            snapshot.hash = hash;
+            snapshot.state = state;
+            snapshot.lastActorFormID = 0;
+            snapshot.lastApply = {};
+            snapshot.everApplied = false;
+        }
+
+        SKSE::log::info(
+            "MST PUBES RX sender=\"{}\" present={} female={} slot={} texture=\"{}\" color={:08X} alpha={:.4f} hash={:016X}",
+            sender,
+            state.present ? 1 : 0,
+            state.female ? 1 : 0,
+            state.sourceSlot,
+            state.texturePath,
+            static_cast<std::uint32_t>(state.color),
+            state.alpha,
+            hash);
+
+        TryApplyRemotePubic(sender, true);
+    }
+
     void MorphSyncService::TryApplyRemote(
         const std::string& sender,
         bool force)
@@ -645,6 +856,98 @@ namespace MorphSyncTogether
             verified ? 1 : 0,
             liveAfter.size(),
             liveAfterHash);
+    }
+
+    void MorphSyncService::TryApplyRemotePubic(
+        const std::string& sender,
+        bool force)
+    {
+        if (!_config.pubicOverlaySyncEnabled) {
+            return;
+        }
+
+        RemotePubicSnapshot snapshot;
+        {
+            std::scoped_lock lock(_remoteMutex);
+            const auto it = _remotePubicSnapshots.find(sender);
+            if (it == _remotePubicSnapshots.end()) {
+                return;
+            }
+            snapshot = it->second;
+        }
+
+        auto* actor = ResolveRemoteProxyByName(sender);
+        if (!actor) {
+            if (force) {
+                SKSE::log::info(
+                    "MST PUBES APPLY WAIT sender=\"{}\" reason=proxy-not-found",
+                    sender);
+            }
+            return;
+        }
+        if (!actor->Get3D()) {
+            if (force) {
+                SKSE::log::info(
+                    "MST PUBES APPLY WAIT sender=\"{}\" actor={:08X} reason=proxy-3d-not-loaded",
+                    sender,
+                    actor->GetFormID());
+            }
+            return;
+        }
+
+        auto& appearance = AppearanceProbe::GetSingleton();
+        const auto liveBefore = appearance.CapturePubicOverlay(actor);
+        if (!liveBefore) {
+            return;
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        const bool drift = !PubicOverlayEquivalent(*liveBefore, snapshot.state);
+        if (!force && snapshot.everApplied && snapshot.lastActorFormID == actor->GetFormID() &&
+            !drift &&
+            now - snapshot.lastApply < std::chrono::milliseconds(_config.remoteReapplyMs)) {
+            return;
+        }
+
+        if (drift) {
+            SKSE::log::info(
+                "MST PUBES DRIFT sender=\"{}\" actor={:08X} livePresent={} liveSlot={} liveTexture=\"{}\" authoritativePresent={} authoritativeSlot={} authoritativeTexture=\"{}\" action=restore",
+                sender,
+                actor->GetFormID(),
+                liveBefore->present ? 1 : 0,
+                liveBefore->sourceSlot,
+                liveBefore->texturePath,
+                snapshot.state.present ? 1 : 0,
+                snapshot.state.sourceSlot,
+                snapshot.state.texturePath);
+        }
+
+        const bool applied = appearance.ApplyPubicOverlay(actor, snapshot.state);
+        const auto liveAfter = appearance.CapturePubicOverlay(actor);
+        const bool verified = liveAfter &&
+            PubicOverlayEquivalent(*liveAfter, snapshot.state);
+
+        {
+            std::scoped_lock lock(_remoteMutex);
+            const auto it = _remotePubicSnapshots.find(sender);
+            if (it != _remotePubicSnapshots.end() && it->second.hash == snapshot.hash) {
+                it->second.everApplied = true;
+                it->second.lastActorFormID = actor->GetFormID();
+                it->second.lastApply = now;
+            }
+        }
+
+        SKSE::log::info(
+            "MST PUBES APPLY sender=\"{}\" actor={:08X} applied={} verified={} present={} targetSlot={} texture=\"{}\" color={:08X} alpha={:.4f}",
+            sender,
+            actor->GetFormID(),
+            applied ? 1 : 0,
+            verified ? 1 : 0,
+            snapshot.state.present ? 1 : 0,
+            liveAfter ? liveAfter->sourceSlot : 0,
+            liveAfter ? liveAfter->texturePath : std::string{},
+            liveAfter ? static_cast<std::uint32_t>(liveAfter->color) : 0,
+            liveAfter ? liveAfter->alpha : 0.0F);
     }
 
     RE::Actor* MorphSyncService::ResolveRemoteProxyByName(std::string_view name) const

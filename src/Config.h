@@ -27,6 +27,10 @@ namespace MorphSyncTogether
 
         bool clearRemoteMorphs{ true };
 
+        // Synchronize only OPubes/OPubesRaceMenuSelector textures stored in
+        // RaceMenu Body [Ovl#] nodes. Other body overlays remain local.
+        bool pubicOverlaySyncEnabled{ true };
+
         // Crash-safe RaceMenu/scenegraph diagnostics. Native TintMask access
         // remains disabled. Remote proxy preservation uses only SKEE overlay
         // registration plus cached FaceGen render materials.
@@ -39,16 +43,11 @@ namespace MorphSyncTogether
         bool appearancePreserveRemote{ true };
         std::uint32_t appearanceRecoveryAttempts{ 3 };
 
-        // v0.2.5: after restoring a drifted FaceGen tint pointer, request an
-        // actual SKSE actor mesh/head refresh. QueueNiNodeUpdate is the first
-        // stage; RegenerateHead is an optional fallback if drift persists.
-        bool appearanceRefreshOnTintDrift{ true };
-        bool appearanceRegenerateHeadFallback{ true };
-        std::uint32_t appearanceRefreshCooldownMs{ 2500 };
-
-        // v0.2.6: RaceMenu public preset/tint DDS guard for remote faces.
-        bool raceMenuPresetGuardEnabled{ true };
-        std::uint32_t raceMenuPresetReloadCooldownMs{ 1000 };
+        // v0.2.10: force the restored FaceGen material back through the shader
+        // setup path so the GPU sees the authoritative tint texture.
+        bool faceMaterialRebindEnabled{ true };
+        std::uint32_t faceMaterialRebindFollowups{ 3 };
+        std::uint32_t faceMaterialRebindIntervalMs{ 1000 };
 
         static Config Load();
     };

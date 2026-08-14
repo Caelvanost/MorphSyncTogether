@@ -1,67 +1,85 @@
-# MorphSyncTogether v0.2.7 — Morph Authority + RaceMenu Preset Guard
+# MorphSyncTogether v0.2.11 - FOMOD installer
 
-This version replaces the unsuccessful pointer-only/FaceGen-refresh recovery as
-the primary makeup path. RaceMenu's public `IPresetInterface` is used instead.
+MorphSyncTogether is an SKSE plugin that keeps remote Skyrim Together player
+appearance data authoritative across clients. It synchronizes RaceMenu
+BodyMorphs, preserves FaceGen makeup after local mod changes, and can optionally
+synchronize OPubes overlays.
 
-## Why
+## Requirements
 
-The v0.2.5 log proved that `QueueNiNodeUpdate` and `RegenerateHead` were both
-dispatched successfully and that the cached materials were restored, while the
-remote makeup still stayed invisible. RaceMenu's public preset API explicitly
-supports saving/loading an actor with a separate generated tint DDS, which is
-the missing render artifact we were not preserving.
+- Skyrim Together Reborn
+- SKSE64
+- RaceMenu
+- Address Library for SKSE Plugins
+- The same MorphSyncTogether version and FOMOD choices on every client
 
+OBody, OStim and OPubes are supported integrations, not hard requirements.
 
-## v0.2.7 morph authority guard
+## Installation
 
-The remote player snapshot is now treated as authoritative every tick. MorphSyncTogether captures the current proxy morph map and compares it with the received snapshot. If OBody or another local system changes the proxy, the mismatch is logged as `MST MORPH DRIFT` and the authoritative values are restored immediately instead of waiting for the periodic 5-second reapply.
+Install `MorphSyncTogether-v0.2.11-FOMOD.zip` with Vortex or another
+FOMOD-compatible mod manager. The installer asks one required question:
 
-After `SetMorph`, the plugin calls `ApplyBodyMorphs(..., false)` on the game thread and queues `UpdateModelWeight(..., false)` as a second RaceMenu-managed pass. It then re-reads the proxy morph map and logs `verified=1/0`.
+- **No - I do not use OPubes** installs BodyMorph and FaceGen makeup sync with
+  `[PubicOverlaySync] Enabled=0`.
+- **Yes - I use OPubes** installs the same core plugin and enables OPubes or
+  OPubesRaceMenuSelector texture, tint, alpha, and shaved-state sync.
 
-`EvaluateBodyMorphs()` is no longer called. In RaceMenu that API evaluates BodyGen templates; it is not a visual update/verification function.
+The installer recommends the OPubes option when it detects `OPubes.esp`,
+`AK_RM_PubicStyles_All_In_One.esp`, or
+`AK_RM_PubicStyles_All_In_One_M.esp`. Install the same option on every Skyrim
+Together client.
 
-The v0.2.6 face-only RaceMenu preset+tint DDS guard is retained unchanged.
+## Features
 
-## v0.2.7 behavior
-
-- BodyMorph networking is unchanged.
-- Native PlayerCharacter TintMask APIs remain disabled.
-- When a remote STR proxy is first fully rendered and healthy, MorphSyncTogether
-  saves a local RaceMenu baseline:
-  - `SKSE\Plugins\MorphSyncTogether\AppearanceCache\<name>.jslot`
-  - `Textures\MorphSyncTogether\AppearanceCache\<name>.dds`
-- Only dynamic `FFxxxxxx` proxy bases are eligible, because RaceMenu notes that
-  preset loading may write details to the TESNPC and therefore requires a unique
-  actor.
-- On FaceGen tint drift, the plugin reloads the cached preset with
-  `kPresetApplyFace` only. Body morphs, transforms and skin overrides are not
-  loaded from the preset.
-- The old QueueNiNodeUpdate / RegenerateHead mechanism remains only as a fallback
-  when the Preset interface is unavailable or a preset load fails.
+- Remote BodyMorph snapshots override locally randomized OBody presets.
+- Morph drift is detected and corrected immediately, with periodic reassertion
+  for late-created Skyrim Together proxies.
+- The first healthy FaceGen tint material remains authoritative for each remote
+  network identity.
+- If OStim or another local system replaces a remote FaceGen tint, the cached
+  texture is restored and rebound through the shader setup path.
+- Follow-up material passes cover late render work without rebuilding the
+  actor's full head.
+- Optional OPubes synchronization sends the owner's texture, packed tint,
+  alpha, overlay slot, and shaved/absent state.
+- Existing pubic overlays are replaced in place. Tattoos, body paint, and
+  temporary OCum overlays are deliberately ignored.
+- Automatic LAN discovery uses UDP port `27992`; a manual peer can be configured
+  in `Data/SKSE/Plugins/MorphSyncTogether.ini`.
 
 ## Expected log
 
-Healthy baseline:
+At startup:
 
 ```text
-MST APPEARANCE interfaces READY ... preset=1 presetVersion=1 ...
-MST RACEMENU PRESET SAVE label="Elir" ... saved=1 ...
+MorphSyncTogether v0.2.11 loading
+MST APPEARANCE interfaces READY ... mode=probe+face-material-rebind+pubic-overlay
+MST APPEARANCE BASELINE ... eligibility=facegen-tint-ready
 ```
 
-When OStim changes the face tint:
+When FaceGen makeup is restored:
 
 ```text
-MST FACEGEN TINT DRIFT ...
-MST RACEMENU PRESET LOAD label="Elir" ... loaded=1 apply=face-only ...
+MST FACEGEN TINT DRIFT ... action=restore+rebind
+MST FACEGEN MATERIAL REBIND ... restored=1 rebound=1 setup=1 finish=1
 ```
 
-If `preset=0`, the installed RaceMenu build did not expose the expected public
-Preset interface name and the log should be returned before further changes.
+With the OPubes FOMOD option enabled:
+
+```text
+MST PUBES TX ...
+MST PUBES RX ...
+MST PUBES DRIFT ... action=restore
+MST PUBES APPLY ... applied=1 verified=1
+```
 
 ## Build
 
-Use the existing PowerShell workflow. The produced Vortex package is:
+Run `build-vortex.ps1`. It compiles the Release DLL, validates both INI
+profiles and the FOMOD XML, stages the installer, creates the ZIP, and verifies
+all required archive entries.
 
 ```text
-MorphSyncTogether-v0.2.7-Vortex.zip
+MorphSyncTogether-v0.2.11-FOMOD.zip
 ```
