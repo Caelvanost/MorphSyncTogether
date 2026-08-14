@@ -8,6 +8,7 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Build = Join-Path $Root "build"
 $Package = Join-Path $Root "package"
+$Dist = Join-Path $Root "dist"
 $OptionalOPubesPackage = Join-Path $Root "optional\OPubes\package"
 $OptionalRelayHostPackage = Join-Path $Root "optional\RelayHost\package"
 $FomodSource = Join-Path $Root "fomod"
@@ -128,7 +129,8 @@ Copy-Item (Join-Path $OptionalOPubesPackage "*") $OPubesStage -Recurse -Force
 Copy-Item (Join-Path $OptionalRelayHostPackage "*") $RelayHostStage -Recurse -Force
 Copy-Item (Join-Path $FomodSource "*") $FomodStage -Recurse -Force
 
-$zip = Join-Path $Root "MorphSyncTogether-v0.4.0-FOMOD.zip"
+New-Item -ItemType Directory -Force -Path $Dist | Out-Null
+$zip = Join-Path $Dist "MorphSyncTogether-v0.4.0-FOMOD.zip"
 if (Test-Path $zip) {
     Remove-Item $zip -Force
 }
