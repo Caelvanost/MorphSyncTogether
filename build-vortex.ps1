@@ -8,6 +8,7 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Build = Join-Path $Root "build"
 $Package = Join-Path $Root "package"
+$Dist = Join-Path $Root "dist"
 $Plugins = Join-Path $Package "Data\SKSE\Plugins"
 
 if (-not $VcpkgRoot) {
@@ -42,7 +43,8 @@ if (-not $dll) {
 New-Item -ItemType Directory -Force -Path $Plugins | Out-Null
 Copy-Item $dll.FullName (Join-Path $Plugins "MorphSyncTogether.dll") -Force
 
-$zip = Join-Path $Root "MorphSyncTogether-v0.2.7-Vortex.zip"
+New-Item -ItemType Directory -Force -Path $Dist | Out-Null
+$zip = Join-Path $Dist "MorphSyncTogether-v0.2.7-Vortex.zip"
 if (Test-Path $zip) {
     Remove-Item $zip -Force
 }
