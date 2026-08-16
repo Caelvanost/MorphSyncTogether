@@ -1,4 +1,4 @@
-# MorphSyncTogether v0.2.12 - BodyHairSliders overlay sync
+# MorphSyncTogether v0.2.13 - BodyHairSliders overlay sync
 
 MorphSyncTogether is an SKSE plugin that keeps remote Skyrim Together player
 appearance data authoritative across clients. It synchronizes RaceMenu
@@ -18,11 +18,10 @@ requirements for the core BodyMorph/FaceGen functionality.
 
 ## Installation
 
-Install `MorphSyncTogether-v0.2.12-FOMOD.zip` with Vortex or another
+Install `MorphSyncTogether-v0.2.13-FOMOD.zip` with Vortex or another
 FOMOD-compatible mod manager.
 
-The Body Hair page now allows any combination of four independent provider
-packs:
+The Body Hair page allows any combination of four independent provider packs:
 
 - **Pubes Forever - Female**
 - **Pubes Forever - Male**
@@ -41,9 +40,9 @@ authority even if its assets are installed locally.
 
 Use the same provider selections on every Skyrim Together client.
 
-## v0.2.12 BodyHairSliders integration
+## v0.2.13 BodyHairSliders integration
 
-The v0.2.11 network layer transported one pubic overlay state. v0.2.12 keeps the
+The v0.2.11 network layer transported one pubic overlay state. v0.2.13 keeps the
 same `PUBES` packet envelope for compatibility but the texture payload can now
 contain a deterministic `BHS1` aggregate representing several independent
 RaceMenu Body overlay regions at once.
@@ -109,7 +108,7 @@ The old v0.2.11 single-pubic state is still accepted as a compatibility input.
 At startup:
 
 ```text
-MorphSyncTogether v0.2.12 loading
+MorphSyncTogether v0.2.13 loading
 MST APPEARANCE interfaces READY ...
 ```
 
@@ -139,5 +138,5 @@ all four provider marker packages and the FOMOD XML, stages the installer,
 creates the ZIP under `dist/`, and verifies all required archive entries.
 
 ```text
-dist/MorphSyncTogether-v0.2.12-FOMOD.zip
+dist/MorphSyncTogether-v0.2.13-FOMOD.zip
 ```
