@@ -2,7 +2,7 @@
 #include "MorphSyncService.h"
 
 // Compile the v0.2.11 service intact under legacy names for the two packet
-// entry points that need wider BodyHairSliders payload support in v0.2.12.
+// entry points that need wider BodyHairSliders payload support in v0.2.13.
 #define HandleUdpPacket HandleUdpPacketLegacy
 #define HandlePubicPacket HandlePubicPacketLegacy
 #include "MorphSyncService.cpp"
@@ -69,7 +69,7 @@ namespace MorphSyncTogether
         }
 
         // v0.2.11 allowed a single texture path and capped it at 512 bytes.
-        // v0.2.12 carries a BHS1 aggregate containing up to eight independent
+        // v0.2.13 carries a BHS1 aggregate containing up to eight independent
         // BodyHairSliders regions, so keep a strict but wider bound.
         constexpr std::size_t kMaxBodyHairAggregateBytes = 4096;
         if (!texture || texture->size() > kMaxBodyHairAggregateBytes ||
