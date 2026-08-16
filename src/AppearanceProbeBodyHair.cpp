@@ -26,7 +26,42 @@ namespace MorphSyncTogether
         constexpr std::string_view kBodyHairAggregatePrefix = "BHS1:";
         constexpr std::uint32_t kNoPreferredSlot = 64;
 
-        std::optional<std::string> ClassifyBodyHairTexturePath(std::string_view value)
+        bool ProviderMarkerEnabled(std::string_view marker)
+        {
+            const auto path = std::filesystem::path("Data") /
+                "SKSE" / "Plugins" / "MorphSyncTogether" / "Providers" /
+                std::string(marker);
+            std::error_code ec;
+            return std::filesystem::exists(path, ec) && !ec;
+        }
+
+        bool PubesForeverFemaleEnabled()
+        {
+            static const bool enabled = ProviderMarkerEnabled("PubesForeverFemale.enabled");
+            return enabled;
+        }
+
+        bool PubesForeverMaleEnabled()
+        {
+            static const bool enabled = ProviderMarkerEnabled("PubesForeverMale.enabled");
+            return enabled;
+        }
+
+        bool NordicWarmaidenEnabled()
+        {
+            static const bool enabled = ProviderMarkerEnabled("NordicWarmaiden.enabled");
+            return enabled;
+        }
+
+        bool HIMBOBodyhairEnabled()
+        {
+            static const bool enabled = ProviderMarkerEnabled("HIMBOBodyhair.enabled");
+            return enabled;
+        }
+
+        std::optional<std::string> ClassifyBodyHairTexturePath(
+            std::string_view value,
+            bool female)
         {
             if (value.empty() || IsEmptyOverlayTexture(value)) {
                 return std::nullopt;
@@ -34,13 +69,24 @@ namespace MorphSyncTogether
 
             const auto path = LowerPath(value);
 
-            // Pubic Hairstyles All In One / Pubes Forever female + male.
+            // Pubic Hairstyles All In One / Pubes Forever female + male share
+            // the same directory. Male textures end in M.dds; the female scan
+            // explicitly excludes that suffix in BodyHairSliders.
             if (path.find("ak_rm_pubic_hair_all_in_one") != std::string::npos) {
-                return std::string("pubic");
+                const bool maleTexture = path.ends_with("m.dds");
+                if (maleTexture) {
+                    return PubesForeverMaleEnabled() ?
+                        std::optional<std::string>{ "pubic" } : std::nullopt;
+                }
+                return PubesForeverFemaleEnabled() ?
+                    std::optional<std::string>{ "pubic" } : std::nullopt;
             }
 
             // Nordic Warmaiden Body Hair.
             if (path.find("nordic warmaiden hair") != std::string::npos) {
+                if (!NordicWarmaidenEnabled()) {
+                    return std::nullopt;
+                }
                 if (path.find("depog - pubes -") != std::string::npos) {
                     return std::string("pubic");
                 }
@@ -60,34 +106,42 @@ namespace MorphSyncTogether
 
             // HIMBO V3 body-hair Body Paints. Check armpit before arm because
             // the latter is a prefix of the former.
-            if (path.find("himbo_bodyhair_armpit") != std::string::npos) {
-                return std::string("armpits");
-            }
-            if (path.find("himbo_bodyhair_arm") != std::string::npos) {
-                return std::string("arms");
-            }
-            if (path.find("himbo_bodyhair_ass") != std::string::npos) {
-                return std::string("butt");
-            }
-            if (path.find("himbo_bodyhair_back") != std::string::npos) {
-                return std::string("back");
-            }
-            if (path.find("himbo_bodyhair_belly") != std::string::npos) {
-                return std::string("stomach");
-            }
-            if (path.find("himbo_bodyhair_chest") != std::string::npos) {
-                return std::string("chest");
-            }
-            if (path.find("himbo_bodyhair_legs") != std::string::npos) {
-                return std::string("legs");
+            if (path.find("himbo_bodyhair_") != std::string::npos) {
+                if (!HIMBOBodyhairEnabled()) {
+                    return std::nullopt;
+                }
+                if (path.find("himbo_bodyhair_armpit") != std::string::npos) {
+                    return std::string("armpits");
+                }
+                if (path.find("himbo_bodyhair_arm") != std::string::npos) {
+                    return std::string("arms");
+                }
+                if (path.find("himbo_bodyhair_ass") != std::string::npos) {
+                    return std::string("butt");
+                }
+                if (path.find("himbo_bodyhair_back") != std::string::npos) {
+                    return std::string("back");
+                }
+                if (path.find("himbo_bodyhair_belly") != std::string::npos) {
+                    return std::string("stomach");
+                }
+                if (path.find("himbo_bodyhair_chest") != std::string::npos) {
+                    return std::string("chest");
+                }
+                if (path.find("himbo_bodyhair_legs") != std::string::npos) {
+                    return std::string("legs");
+                }
             }
 
-            // OPubes compatibility. Only positively pubic-looking paths are
-            // claimed; unrelated tattoos/body paints and OCum remain untouched.
+            // OPubes compatibility. OPubes is a bridge rather than a separate
+            // asset pack, so generic pubic-looking paths follow the selected
+            // Pubes Forever pack for the actor's sex.
             if (path.find("pubic") != std::string::npos ||
                 path.find("pubes") != std::string::npos ||
                 path.find("overlays\\hieroglyphics\\") != std::string::npos) {
-                return std::string("pubic");
+                const bool enabled = female ?
+                    PubesForeverFemaleEnabled() : PubesForeverMaleEnabled();
+                return enabled ? std::optional<std::string>{ "pubic" } : std::nullopt;
             }
 
             return std::nullopt;
@@ -189,7 +243,7 @@ namespace MorphSyncTogether
                 if (!state.present) {
                     return result;
                 }
-                const auto region = ClassifyBodyHairTexturePath(state.texturePath);
+                const auto region = ClassifyBodyHairTexturePath(state.texturePath, state.female);
                 if (!region || *region != "pubic") {
                     return std::nullopt;
                 }
@@ -237,7 +291,7 @@ namespace MorphSyncTogether
                 if (!texture || texture->empty() || texture->size() > 512) {
                     return std::nullopt;
                 }
-                const auto classified = ClassifyBodyHairTexturePath(*texture);
+                const auto classified = ClassifyBodyHairTexturePath(*texture, state.female);
                 if (!classified || *classified != entry.region) {
                     return std::nullopt;
                 }
@@ -275,7 +329,7 @@ namespace MorphSyncTogether
                 return std::nullopt;
             }
 
-            const auto region = ClassifyBodyHairTexturePath(texture.stringValue);
+            const auto region = ClassifyBodyHairTexturePath(texture.stringValue, female);
             if (!region) {
                 return std::nullopt;
             }
@@ -354,14 +408,15 @@ namespace MorphSyncTogether
             }
         }
 
-        // Preserve the v0.2.11 live-material fallback for OPubes. BodyHairSliders
-        // itself writes SKEE overrides, so additional regions live in override storage.
+        // Preserve the v0.2.11 live-material fallback for OPubes, but only if
+        // the corresponding female/male pubic pack was selected in the FOMOD.
         const auto hasPubic = std::any_of(entries.begin(), entries.end(), [](const auto& item) {
             return item.region == "pubic";
         });
         if (!hasPubic) {
             const auto legacy = CapturePubicOverlayLegacy(actor);
-            if (legacy && legacy->present) {
+            if (legacy && legacy->present &&
+                ClassifyBodyHairTexturePath(legacy->texturePath, female)) {
                 entries.push_back(ManagedBodyHairEntry{
                     "pubic",
                     legacy->sourceSlot,
@@ -391,7 +446,7 @@ namespace MorphSyncTogether
 
         const auto desiredParsed = ParseBodyHairEntries(state);
         if (!desiredParsed) {
-            SKSE::log::warn("MST BODYHAIR APPLY rejected malformed aggregate actor={:08X}", actor->GetFormID());
+            SKSE::log::warn("MST BODYHAIR APPLY rejected malformed/disabled aggregate actor={:08X}", actor->GetFormID());
             return false;
         }
         const auto& desired = *desiredParsed;
