@@ -144,7 +144,7 @@ Copy-Item (Join-Path $HIMBOBodyhairPackage "*") $HIMBOBodyhairStage -Recurse -Fo
 Copy-Item (Join-Path $FomodSource "*") $FomodStage -Recurse -Force
 
 New-Item -ItemType Directory -Force -Path $Dist | Out-Null
-$zip = Join-Path $Dist "MorphSyncTogether-v0.2.12-FOMOD.zip"
+$zip = Join-Path $Dist "MorphSyncTogether-v0.2.13-FOMOD.zip"
 if (Test-Path $zip) {
     Remove-Item $zip -Force
 }
