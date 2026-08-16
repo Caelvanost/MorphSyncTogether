@@ -3,5 +3,5 @@
   <Name>MorphSyncTogether</Name>
   <Author>Caelvanost</Author>
   <Version>0.2.12</Version>
-  <Description>Synchronizes RaceMenu BodyMorphs and FaceGen makeup between Skyrim Together players. Optional BodyHairSliders / OPubes Body-overlay synchronization covers pubic, armpit, chest, stomach, back, arm, leg and butt hair.</Description>
+  <Description>Synchronizes RaceMenu BodyMorphs and FaceGen makeup between Skyrim Together players. BodyHairSliders overlay synchronization is selectable per provider: Pubes Forever Female, Pubes Forever Male, Nordic Warmaiden and Bodyhair for HIMBO.</Description>
 </fomod>
