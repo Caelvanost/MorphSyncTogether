@@ -91,10 +91,10 @@ foreach ($RequiredPath in @($CoreIni, $OPubesIni, $ModuleConfig, $Info, $ModuleI
 $CoreIniContent = Get-Content -LiteralPath $CoreIni -Raw
 $OPubesIniContent = Get-Content -LiteralPath $OPubesIni -Raw
 if ($CoreIniContent -notmatch '(?ms)^\[PubicOverlaySync\].*?^Enabled=0\s*$') {
-    throw "Le profil FOMOD principal doit desactiver PubicOverlaySync."
+    throw "Le profil FOMOD principal doit desactiver la synchronisation BodyHairSliders/OPubes."
 }
 if ($OPubesIniContent -notmatch '(?ms)^\[PubicOverlaySync\].*?^Enabled=1\s*$') {
-    throw "Le profil FOMOD OPubes doit activer PubicOverlaySync."
+    throw "Le profil FOMOD BodyHairSliders/OPubes doit activer la synchronisation d'overlays."
 }
 
 try {
@@ -122,7 +122,7 @@ Copy-Item (Join-Path $OptionalOPubesPackage "*") $OPubesStage -Recurse -Force
 Copy-Item (Join-Path $FomodSource "*") $FomodStage -Recurse -Force
 
 New-Item -ItemType Directory -Force -Path $Dist | Out-Null
-$zip = Join-Path $Dist "MorphSyncTogether-v0.2.11-FOMOD.zip"
+$zip = Join-Path $Dist "MorphSyncTogether-v0.2.12-FOMOD.zip"
 if (Test-Path $zip) {
     Remove-Item $zip -Force
 }
