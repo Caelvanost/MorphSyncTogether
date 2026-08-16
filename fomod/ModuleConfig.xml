@@ -6,33 +6,79 @@
     <folder source="00 Core" destination="" priority="0" />
   </requiredInstallFiles>
   <installSteps order="Explicit">
-    <installStep name="Body hair overlay synchronization">
+    <installStep name="Body hair overlay packs">
       <optionalFileGroups order="Explicit">
-        <group name="Synchronize BodyHairSliders / OPubes overlays?" type="SelectExactlyOne">
+        <group name="Which body-hair overlay packs do you use?" type="SelectAny">
           <plugins order="Explicit">
-            <plugin name="No - Body overlays disabled">
-              <description>Installs BodyMorph and FaceGen makeup synchronization only. BodyHairSliders and OPubes Body overlays are not network-authoritative.</description>
-              <typeDescriptor>
-                <type name="Optional" />
-              </typeDescriptor>
-            </plugin>
-            <plugin name="Yes - BodyHairSliders / OPubes">
-              <description>Synchronizes recognized body-hair Body overlays: pubic, armpits, chest, stomach, back, arms, legs and butt. Supports BodyHairSliders providers and OPubes while ignoring tattoos and temporary OCum overlays. Install the same option on every client.</description>
+            <plugin name="Pubes Forever - Female">
+              <description>Synchronizes female pubic overlays from Pubic Hairstyles All In One / Pubes Forever. Also enables compatible OPubes female pubic overlays.</description>
               <files>
-                <folder source="10 OPubes" destination="" priority="10" />
+                <folder source="10 Pubes Forever Female" destination="" priority="10" />
               </files>
               <typeDescriptor>
                 <dependencyType>
                   <defaultType name="Optional" />
                   <patterns>
                     <pattern>
-                      <dependencies operator="Or">
-                        <fileDependency file="SKSE\Plugins\BodyHairSliders.dll" state="Active" />
-                        <fileDependency file="OPubes.esp" state="Active" />
+                      <dependencies operator="And">
                         <fileDependency file="AK_RM_PubicStyles_All_In_One.esp" state="Active" />
+                      </dependencies>
+                      <type name="Recommended" />
+                    </pattern>
+                  </patterns>
+                </dependencyType>
+              </typeDescriptor>
+            </plugin>
+            <plugin name="Pubes Forever - Male">
+              <description>Synchronizes male pubic overlays from Pubes Forever for Males. Also enables compatible OPubes male pubic overlays.</description>
+              <files>
+                <folder source="20 Pubes Forever Male" destination="" priority="20" />
+              </files>
+              <typeDescriptor>
+                <dependencyType>
+                  <defaultType name="Optional" />
+                  <patterns>
+                    <pattern>
+                      <dependencies operator="And">
                         <fileDependency file="AK_RM_PubicStyles_All_In_One_M.esp" state="Active" />
-                        <fileDependency file="HIMBOBodyhairOverlay.esp" state="Active" />
+                      </dependencies>
+                      <type name="Recommended" />
+                    </pattern>
+                  </patterns>
+                </dependencyType>
+              </typeDescriptor>
+            </plugin>
+            <plugin name="Nordic Warmaiden Body Hair">
+              <description>Synchronizes Nordic Warmaiden pubic, armpit, stomach, butt and back hair overlays.</description>
+              <files>
+                <folder source="30 Nordic Warmaiden" destination="" priority="30" />
+              </files>
+              <typeDescriptor>
+                <dependencyType>
+                  <defaultType name="Optional" />
+                  <patterns>
+                    <pattern>
+                      <dependencies operator="And">
                         <fileDependency file="Nordic Warmaiden Body Hair.esp" state="Active" />
+                      </dependencies>
+                      <type name="Recommended" />
+                    </pattern>
+                  </patterns>
+                </dependencyType>
+              </typeDescriptor>
+            </plugin>
+            <plugin name="Bodyhair for HIMBO">
+              <description>Synchronizes HIMBO arms, armpits, butt, back, stomach, chest and legs body-hair overlays.</description>
+              <files>
+                <folder source="40 HIMBO Bodyhair" destination="" priority="40" />
+              </files>
+              <typeDescriptor>
+                <dependencyType>
+                  <defaultType name="Optional" />
+                  <patterns>
+                    <pattern>
+                      <dependencies operator="And">
+                        <fileDependency file="HIMBOBodyhairOverlay.esp" state="Active" />
                       </dependencies>
                       <type name="Recommended" />
                     </pattern>
