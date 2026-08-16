@@ -22,7 +22,7 @@ add_commonlibsse_plugin(${PROJECT_NAME}
         src/SkeeInterfaces.h
         src/AppearanceProbeBodyHair.cpp
         src/AppearanceProbe.h
-        src/MorphSyncService.cpp
+        src/MorphSyncServiceBodyHair.cpp
         src/MorphSyncService.h
 )
 
