@@ -1,3 +1,4 @@
+#include "PCH.h"
 #include "AppearanceProbe.h"
 
 // Compile the proven v0.2.11 appearance implementation unchanged, but rename
@@ -23,6 +24,7 @@ namespace MorphSyncTogether
         };
 
         constexpr std::string_view kBodyHairAggregatePrefix = "BHS1:";
+        constexpr std::uint32_t kNoPreferredSlot = 64;
 
         std::optional<std::string> ClassifyBodyHairTexturePath(std::string_view value)
         {
@@ -37,9 +39,7 @@ namespace MorphSyncTogether
                 return std::string("pubic");
             }
 
-            // Nordic Warmaiden Body Hair. BodyHairSliders pairs Dark/Fair files
-            // into one semantic style, but the rendered overlay still exposes
-            // the concrete selected texture path.
+            // Nordic Warmaiden Body Hair.
             if (path.find("nordic warmaiden hair") != std::string::npos) {
                 if (path.find("depog - pubes -") != std::string::npos) {
                     return std::string("pubic");
@@ -82,8 +82,8 @@ namespace MorphSyncTogether
                 return std::string("legs");
             }
 
-            // OPubes compatibility. Keep this deliberately narrow enough that
-            // tattoos, body paint and temporary OCum overlays are not claimed.
+            // OPubes compatibility. Only positively pubic-looking paths are
+            // claimed; unrelated tattoos/body paints and OCum remain untouched.
             if (path.find("pubic") != std::string::npos ||
                 path.find("pubes") != std::string::npos ||
                 path.find("overlays\\hieroglyphics\\") != std::string::npos) {
@@ -165,10 +165,13 @@ namespace MorphSyncTogether
                     serialized.push_back(';');
                 }
                 const auto& entry = entries[i];
+
+                // Deliberately omit RaceMenu slot numbers. Slot allocation is a
+                // local implementation detail and can differ between clients.
+                // Region + texture + tint + alpha is the authoritative identity.
                 serialized += fmt::format(
-                    "{},{},{:08X},{:.9g},{}",
+                    "{},{:08X},{:.9g},{}",
                     entry.region,
-                    entry.slot,
                     static_cast<std::uint32_t>(entry.color),
                     entry.alpha,
                     HexEncodeBodyHair(entry.texturePath));
@@ -210,27 +213,27 @@ namespace MorphSyncTogether
 
             for (const auto& token : SplitBodyHair(body, ';')) {
                 const auto fields = SplitBodyHair(token, ',');
-                if (fields.size() != 5 || fields[0].empty()) {
+                if (fields.size() != 4 || fields[0].empty()) {
                     return std::nullopt;
                 }
 
                 ManagedBodyHairEntry entry{};
                 entry.region = fields[0];
+                entry.slot = kNoPreferredSlot;
                 try {
-                    const auto slot = std::stoul(fields[1]);
-                    const auto color = std::stoul(fields[2], nullptr, 16);
-                    const auto alpha = std::stof(fields[3]);
-                    if (slot >= 64 || !std::isfinite(alpha)) {
+                    const auto color = std::stoull(fields[1], nullptr, 16);
+                    const auto alpha = std::stof(fields[2]);
+                    if (color > std::numeric_limits<std::uint32_t>::max() ||
+                        !std::isfinite(alpha)) {
                         return std::nullopt;
                     }
-                    entry.slot = static_cast<std::uint32_t>(slot);
-                    entry.color = static_cast<std::int32_t>(color);
+                    entry.color = static_cast<std::int32_t>(static_cast<std::uint32_t>(color));
                     entry.alpha = std::clamp(alpha, 0.0F, 1.0F);
                 } catch (...) {
                     return std::nullopt;
                 }
 
-                const auto texture = HexDecodeBodyHair(fields[4]);
+                const auto texture = HexDecodeBodyHair(fields[3]);
                 if (!texture || texture->empty() || texture->size() > 512) {
                     return std::nullopt;
                 }
@@ -352,8 +355,7 @@ namespace MorphSyncTogether
         }
 
         // Preserve the v0.2.11 live-material fallback for OPubes. BodyHairSliders
-        // itself writes SKEE overrides, so the additional regions are expected
-        // to be present in override storage.
+        // itself writes SKEE overrides, so additional regions live in override storage.
         const auto hasPubic = std::any_of(entries.begin(), entries.end(), [](const auto& item) {
             return item.region == "pubic";
         });
@@ -368,10 +370,6 @@ namespace MorphSyncTogether
                     legacy->alpha });
             }
         }
-
-        std::sort(entries.begin(), entries.end(), [](const auto& lhs, const auto& rhs) {
-            return lhs.region < rhs.region;
-        });
 
         PubicOverlayState result{};
         result.present = !entries.empty();
@@ -490,11 +488,9 @@ namespace MorphSyncTogether
             std::optional<std::uint32_t> targetSlot;
             if (current != live.end()) {
                 targetSlot = current->slot;
-            } else if (wanted.slot < slotCount && !occupied[wanted.slot]) {
-                targetSlot = wanted.slot;
             } else {
                 // Match BodyHairSliders: reserve from the highest free Body slot
-                // downward, minimizing collisions with conventional body paints.
+                // downward. Sender slot numbers are intentionally not authoritative.
                 for (std::uint32_t slot = slotCount; slot-- > 0;) {
                     if (!occupied[slot]) {
                         targetSlot = slot;
@@ -514,11 +510,10 @@ namespace MorphSyncTogether
             setSlot(*targetSlot, &wanted);
             changed = true;
             SKSE::log::info(
-                "MST BODYHAIR APPLY actor={:08X} region={} slot={} sourceSlot={} texture=\"{}\" color={:08X} alpha={:.4f}",
+                "MST BODYHAIR APPLY actor={:08X} region={} slot={} texture=\"{}\" color={:08X} alpha={:.4f}",
                 actor->GetFormID(),
                 wanted.region,
                 *targetSlot,
-                wanted.slot,
                 wanted.texturePath,
                 static_cast<std::uint32_t>(wanted.color),
                 wanted.alpha);
