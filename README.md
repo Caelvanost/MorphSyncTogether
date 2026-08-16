@@ -1,9 +1,9 @@
-# MorphSyncTogether v0.2.11 - FOMOD installer
+# MorphSyncTogether v0.2.12 - BodyHairSliders overlay sync
 
 MorphSyncTogether is an SKSE plugin that keeps remote Skyrim Together player
 appearance data authoritative across clients. It synchronizes RaceMenu
 BodyMorphs, preserves FaceGen makeup after local mod changes, and can optionally
-synchronize OPubes overlays.
+synchronize the Body overlays used by BodyHairSliders and OPubes.
 
 ## Requirements
 
@@ -13,24 +13,69 @@ synchronize OPubes overlays.
 - Address Library for SKSE Plugins
 - The same MorphSyncTogether version and FOMOD choices on every client
 
-OBody, OStim and OPubes are supported integrations, not hard requirements.
+OBody, OStim, BodyHairSliders and OPubes are supported integrations, not hard
+requirements for the core BodyMorph/FaceGen functionality.
 
 ## Installation
 
-Install `MorphSyncTogether-v0.2.11-FOMOD.zip` with Vortex or another
-FOMOD-compatible mod manager. The installer asks one required question:
+Install `MorphSyncTogether-v0.2.12-FOMOD.zip` with Vortex or another
+FOMOD-compatible mod manager. The installer asks whether Body Hair Body overlays
+should be synchronized.
 
-- **No - I do not use OPubes** installs BodyMorph and FaceGen makeup sync with
+- **No - Body overlays disabled** installs BodyMorph and FaceGen makeup sync with
   `[PubicOverlaySync] Enabled=0`.
-- **Yes - I use OPubes** installs the same core plugin and enables OPubes or
-  OPubesRaceMenuSelector texture, tint, alpha, and shaved-state sync.
+- **Yes - BodyHairSliders / OPubes** installs the same core plugin with
+  `[PubicOverlaySync] Enabled=1` and enables the multi-region overlay snapshot.
 
-The installer recommends the OPubes option when it detects `OPubes.esp`,
-`AK_RM_PubicStyles_All_In_One.esp`, or
-`AK_RM_PubicStyles_All_In_One_M.esp`. Install the same option on every Skyrim
-Together client.
+Use the same option on every Skyrim Together client.
 
-## Features
+## v0.2.12 BodyHairSliders integration
+
+The v0.2.11 network layer transported one pubic overlay state. v0.2.12 keeps the
+same `PUBES` packet envelope for compatibility but the texture payload can now
+contain a deterministic `BHS1` aggregate representing several independent
+RaceMenu Body overlay regions at once.
+
+Managed regions follow the current BodyHairSliders provider model:
+
+- pubic
+- armpits
+- chest
+- stomach / belly
+- back
+- arms
+- legs
+- butt
+
+Recognized providers/paths include:
+
+- Nordic Warmaiden Body Hair
+  - `dePog - Pubes - ...`
+  - `dePog - Pits - ...`
+  - `dePog - Navel - ...`
+  - `dePog - Crack - ...`
+  - `dePog - Beast - ...`
+- Pubic Hairstyles All In One / Pubes Forever female and male assets under
+  `ak_rm_pubic_hair_all_in_one`
+- HIMBO V3 Bodyhair Body Paints (`HIMBO_BodyHair_*`)
+- OPubes-compatible pubic overlay paths
+
+The synchronizer captures each managed region independently, including its
+texture, packed tint color and alpha. On a remote STR proxy it replaces the
+locally-randomized overlay for the same semantic region. If the owner no longer
+has a region selected, the corresponding remote managed overlay is cleared.
+
+When a region does not already exist on the remote proxy, MorphSyncTogether
+tries the owner's source slot only if it is free; otherwise it reserves the
+highest free RaceMenu Body slot, matching BodyHairSliders' allocation strategy.
+It never intentionally overwrites an occupied unrelated Body Paint slot.
+
+Only positively recognized body-hair texture families are managed. Tattoos,
+generic body paints and temporary OCum overlays remain outside this authority.
+
+The old v0.2.11 single-pubic state is still accepted as a compatibility input.
+
+## Other features
 
 - Remote BodyMorph snapshots override locally randomized OBody presets.
 - Morph drift is detected and corrected immediately, with periodic reassertion
@@ -41,10 +86,6 @@ Together client.
   texture is restored and rebound through the shader setup path.
 - Follow-up material passes cover late render work without rebuilding the
   actor's full head.
-- Optional OPubes synchronization sends the owner's texture, packed tint,
-  alpha, overlay slot, and shaved/absent state.
-- Existing pubic overlays are replaced in place. Tattoos, body paint, and
-  temporary OCum overlays are deliberately ignored.
 - Automatic LAN discovery uses UDP port `27992`; a manual peer can be configured
   in `Data/SKSE/Plugins/MorphSyncTogether.ini`.
 
@@ -53,9 +94,8 @@ Together client.
 At startup:
 
 ```text
-MorphSyncTogether v0.2.11 loading
-MST APPEARANCE interfaces READY ... mode=probe+face-material-rebind+pubic-overlay
-MST APPEARANCE BASELINE ... eligibility=facegen-tint-ready
+MorphSyncTogether v0.2.12 loading
+MST APPEARANCE interfaces READY ...
 ```
 
 When FaceGen makeup is restored:
@@ -65,21 +105,25 @@ MST FACEGEN TINT DRIFT ... action=restore+rebind
 MST FACEGEN MATERIAL REBIND ... restored=1 rebound=1 setup=1 finish=1
 ```
 
-With the OPubes FOMOD option enabled:
+With BodyHairSliders / OPubes overlay synchronization enabled, the existing
+network envelope still logs `PUBES`, while per-region application logs use the
+new Body Hair diagnostics:
 
 ```text
 MST PUBES TX ...
 MST PUBES RX ...
-MST PUBES DRIFT ... action=restore
+MST BODYHAIR APPLY ... region=armpits ...
+MST BODYHAIR APPLY ... region=pubic ...
+MST BODYHAIR CLEAR ... region=chest ...
 MST PUBES APPLY ... applied=1 verified=1
 ```
 
 ## Build
 
 Run `build-vortex.ps1`. It compiles the Release DLL, validates both INI
-profiles and the FOMOD XML, stages the installer, creates the ZIP, and verifies
-all required archive entries.
+profiles and the FOMOD XML, stages the installer, creates the ZIP under `dist/`,
+and verifies all required archive entries.
 
 ```text
-MorphSyncTogether-v0.2.11-FOMOD.zip
+dist/MorphSyncTogether-v0.2.12-FOMOD.zip
 ```
