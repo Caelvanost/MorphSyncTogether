@@ -1,6 +1,6 @@
 {
   "name": "morph-sync-together",
-  "version-string": "0.2.12",
+  "version-string": "0.2.13",
   "dependencies": [
     "commonlibsse-ng"
   ]
