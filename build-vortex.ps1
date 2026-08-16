@@ -9,7 +9,10 @@ $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Build = Join-Path $Root "build"
 $Package = Join-Path $Root "package"
 $Dist = Join-Path $Root "dist"
-$OptionalOPubesPackage = Join-Path $Root "optional\OPubes\package"
+$PubesFemalePackage = Join-Path $Root "optional\PubesForeverFemale\package"
+$PubesMalePackage = Join-Path $Root "optional\PubesForeverMale\package"
+$NordicWarmaidenPackage = Join-Path $Root "optional\NordicWarmaiden\package"
+$HIMBOBodyhairPackage = Join-Path $Root "optional\HIMBOBodyhair\package"
 $FomodSource = Join-Path $Root "fomod"
 $Plugins = Join-Path $Package "Data\SKSE\Plugins"
 $Stage = [System.IO.Path]::GetFullPath((Join-Path $Build "fomod-stage"))
@@ -77,24 +80,31 @@ New-Item -ItemType Directory -Force -Path $Plugins | Out-Null
 Copy-Item $dll.FullName (Join-Path $Plugins "MorphSyncTogether.dll") -Force
 
 $CoreIni = Join-Path $Plugins "MorphSyncTogether.ini"
-$OPubesIni = Join-Path $OptionalOPubesPackage "Data\SKSE\Plugins\MorphSyncTogether.ini"
+$PubesFemaleMarker = Join-Path $PubesFemalePackage "Data\SKSE\Plugins\MorphSyncTogether\Providers\PubesForeverFemale.enabled"
+$PubesMaleMarker = Join-Path $PubesMalePackage "Data\SKSE\Plugins\MorphSyncTogether\Providers\PubesForeverMale.enabled"
+$NordicWarmaidenMarker = Join-Path $NordicWarmaidenPackage "Data\SKSE\Plugins\MorphSyncTogether\Providers\NordicWarmaiden.enabled"
+$HIMBOBodyhairMarker = Join-Path $HIMBOBodyhairPackage "Data\SKSE\Plugins\MorphSyncTogether\Providers\HIMBOBodyhair.enabled"
 $ModuleConfig = Join-Path $FomodSource "ModuleConfig.xml"
 $Info = Join-Path $FomodSource "info.xml"
 $ModuleImage = Join-Path $FomodSource "ModuleImage.png"
 
-foreach ($RequiredPath in @($CoreIni, $OPubesIni, $ModuleConfig, $Info, $ModuleImage)) {
+foreach ($RequiredPath in @(
+    $CoreIni,
+    $PubesFemaleMarker,
+    $PubesMaleMarker,
+    $NordicWarmaidenMarker,
+    $HIMBOBodyhairMarker,
+    $ModuleConfig,
+    $Info,
+    $ModuleImage)) {
     if (-not (Test-Path -LiteralPath $RequiredPath)) {
         throw "Fichier FOMOD requis introuvable: $RequiredPath"
     }
 }
 
 $CoreIniContent = Get-Content -LiteralPath $CoreIni -Raw
-$OPubesIniContent = Get-Content -LiteralPath $OPubesIni -Raw
-if ($CoreIniContent -notmatch '(?ms)^\[PubicOverlaySync\].*?^Enabled=0\s*$') {
-    throw "Le profil FOMOD principal doit desactiver la synchronisation BodyHairSliders/OPubes."
-}
-if ($OPubesIniContent -notmatch '(?ms)^\[PubicOverlaySync\].*?^Enabled=1\s*$') {
-    throw "Le profil FOMOD BodyHairSliders/OPubes doit activer la synchronisation d'overlays."
+if ($CoreIniContent -notmatch '(?ms)^\[PubicOverlaySync\].*?^Enabled=1\s*$') {
+    throw "Le profil principal doit laisser le transport BodyHair actif; les providers sont controles par les marqueurs FOMOD."
 }
 
 try {
@@ -113,12 +123,24 @@ if (Test-Path -LiteralPath $Stage) {
 }
 
 $CoreStage = Join-Path $Stage "00 Core"
-$OPubesStage = Join-Path $Stage "10 OPubes"
+$PubesFemaleStage = Join-Path $Stage "10 Pubes Forever Female"
+$PubesMaleStage = Join-Path $Stage "20 Pubes Forever Male"
+$NordicWarmaidenStage = Join-Path $Stage "30 Nordic Warmaiden"
+$HIMBOBodyhairStage = Join-Path $Stage "40 HIMBO Bodyhair"
 $FomodStage = Join-Path $Stage "fomod"
-New-Item -ItemType Directory -Force -Path $CoreStage, $OPubesStage, $FomodStage | Out-Null
+New-Item -ItemType Directory -Force -Path `
+    $CoreStage,
+    $PubesFemaleStage,
+    $PubesMaleStage,
+    $NordicWarmaidenStage,
+    $HIMBOBodyhairStage,
+    $FomodStage | Out-Null
 
 Copy-Item (Join-Path $Package "*") $CoreStage -Recurse -Force
-Copy-Item (Join-Path $OptionalOPubesPackage "*") $OPubesStage -Recurse -Force
+Copy-Item (Join-Path $PubesFemalePackage "*") $PubesFemaleStage -Recurse -Force
+Copy-Item (Join-Path $PubesMalePackage "*") $PubesMaleStage -Recurse -Force
+Copy-Item (Join-Path $NordicWarmaidenPackage "*") $NordicWarmaidenStage -Recurse -Force
+Copy-Item (Join-Path $HIMBOBodyhairPackage "*") $HIMBOBodyhairStage -Recurse -Force
 Copy-Item (Join-Path $FomodSource "*") $FomodStage -Recurse -Force
 
 New-Item -ItemType Directory -Force -Path $Dist | Out-Null
@@ -139,7 +161,10 @@ try {
     $RequiredEntries = @(
         "00 Core/Data/SKSE/Plugins/MorphSyncTogether.dll",
         "00 Core/Data/SKSE/Plugins/MorphSyncTogether.ini",
-        "10 OPubes/Data/SKSE/Plugins/MorphSyncTogether.ini",
+        "10 Pubes Forever Female/Data/SKSE/Plugins/MorphSyncTogether/Providers/PubesForeverFemale.enabled",
+        "20 Pubes Forever Male/Data/SKSE/Plugins/MorphSyncTogether/Providers/PubesForeverMale.enabled",
+        "30 Nordic Warmaiden/Data/SKSE/Plugins/MorphSyncTogether/Providers/NordicWarmaiden.enabled",
+        "40 HIMBO Bodyhair/Data/SKSE/Plugins/MorphSyncTogether/Providers/HIMBOBodyhair.enabled",
         "fomod/ModuleConfig.xml",
         "fomod/info.xml",
         "fomod/ModuleImage.png"
