@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
     MorphSyncTogether
-    VERSION 0.2.12
+    VERSION 0.2.13
     LANGUAGES CXX
 )
 
