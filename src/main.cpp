@@ -54,7 +54,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
     InitLogging();
     SKSE::Init(skse);
 
-    SKSE::log::info("MorphSyncTogether v0.2.13 loading");
+    SKSE::log::info("MorphSyncTogether v0.2.14 loading");
 
     auto* messaging = SKSE::GetMessagingInterface();
     if (!messaging) {
