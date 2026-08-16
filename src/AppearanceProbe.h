@@ -9,7 +9,7 @@ namespace MorphSyncTogether
     {
     public:
         // Kept under the historical name for wire compatibility with the v0.2.11
-        // PUBES packet. In v0.2.12 texturePath carries a deterministic aggregate
+        // PUBES packet. In v0.2.13 texturePath carries a deterministic aggregate
         // of all managed BodyHairSliders body-overlay regions, not only pubic hair.
         struct PubicOverlayState
         {
@@ -94,7 +94,7 @@ namespace MorphSyncTogether
 
         AppearanceProbe() = default;
 
-        // Original v0.2.11 single-pubic-overlay implementation. The v0.2.12
+        // Original v0.2.11 single-pubic-overlay implementation. The v0.2.13
         // translation unit renames the legacy definitions to these methods and
         // layers the multi-region BodyHairSliders aggregate on top.
         std::optional<PubicOverlayState> CapturePubicOverlayLegacy(RE::Actor* actor) const;
