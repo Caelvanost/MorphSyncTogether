@@ -1,23 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://qconsulting.ca/fo3/ModConfig5.0.xsd">
-  <moduleName>MorphSyncTogether 0.2.11</moduleName>
+  <moduleName>MorphSyncTogether 0.2.12</moduleName>
   <moduleImage path="fomod\ModuleImage.png" />
   <requiredInstallFiles>
     <folder source="00 Core" destination="" priority="0" />
   </requiredInstallFiles>
   <installSteps order="Explicit">
-    <installStep name="OPubes integration">
+    <installStep name="Body hair overlay synchronization">
       <optionalFileGroups order="Explicit">
-        <group name="Do you use OPubes?" type="SelectExactlyOne">
+        <group name="Synchronize BodyHairSliders / OPubes overlays?" type="SelectExactlyOne">
           <plugins order="Explicit">
-            <plugin name="No - I do not use OPubes">
-              <description>Installs BodyMorph and FaceGen makeup synchronization only. OPubes network capture is disabled.</description>
+            <plugin name="No - Body overlays disabled">
+              <description>Installs BodyMorph and FaceGen makeup synchronization only. BodyHairSliders and OPubes Body overlays are not network-authoritative.</description>
               <typeDescriptor>
-                <type name="Recommended" />
+                <type name="Optional" />
               </typeDescriptor>
             </plugin>
-            <plugin name="Yes - I use OPubes">
-              <description>Also synchronizes the OPubes or OPubesRaceMenuSelector texture, tint, alpha, and shaved state. Install the same option on every client.</description>
+            <plugin name="Yes - BodyHairSliders / OPubes">
+              <description>Synchronizes recognized body-hair Body overlays: pubic, armpits, chest, stomach, back, arms, legs and butt. Supports BodyHairSliders providers and OPubes while ignoring tattoos and temporary OCum overlays. Install the same option on every client.</description>
               <files>
                 <folder source="10 OPubes" destination="" priority="10" />
               </files>
@@ -27,9 +27,12 @@
                   <patterns>
                     <pattern>
                       <dependencies operator="Or">
+                        <fileDependency file="SKSE\Plugins\BodyHairSliders.dll" state="Active" />
                         <fileDependency file="OPubes.esp" state="Active" />
                         <fileDependency file="AK_RM_PubicStyles_All_In_One.esp" state="Active" />
                         <fileDependency file="AK_RM_PubicStyles_All_In_One_M.esp" state="Active" />
+                        <fileDependency file="HIMBOBodyhairOverlay.esp" state="Active" />
+                        <fileDependency file="Nordic Warmaiden Body Hair.esp" state="Active" />
                       </dependencies>
                       <type name="Recommended" />
                     </pattern>
