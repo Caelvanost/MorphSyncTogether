@@ -1,4 +1,4 @@
-# MorphSyncTogether v0.2.13 - BodyHairSliders overlay sync
+# MorphSyncTogether v0.2.14 - BodyHairSliders overlay sync
 
 MorphSyncTogether is an SKSE plugin that keeps remote Skyrim Together player
 appearance data authoritative across clients. It synchronizes RaceMenu
@@ -18,15 +18,27 @@ requirements for the core BodyMorph/FaceGen functionality.
 
 ## Installation
 
-Install `MorphSyncTogether-v0.2.13-FOMOD.zip` with Vortex or another
+Install `MorphSyncTogether-v0.2.14-FOMOD.zip` with Vortex or another
 FOMOD-compatible mod manager.
 
-The Body Hair page allows any combination of four independent provider packs:
+The BodyHairSliders provider page allows any combination of four independent
+provider mods, using the same canonical names as BodyHairSliders:
 
-- **Pubes Forever - Female**
-- **Pubes Forever - Male**
+- **Pubic Hairstyles All In One CBBE / Pubes Forever Female**
+- **Pubes Forever Male**
 - **Nordic Warmaiden Body Hair**
-- **Bodyhair for HIMBO**
+- **HIMBO V3 Bodyhair Overlays for Racemenu**
+
+The FOMOD detects the provider plugins used by BodyHairSliders:
+
+- `AK_RM_PubicStyles_All_In_One.esp`
+- `AK_RM_PubicStyles_All_In_One_M.esp`
+- `Nordic Warmaiden Body Hair.esp`
+- `HIMBOBodyhairOverlay.esp`
+
+When a matching plugin is active, that provider is exposed as `Recommended` by
+the FOMOD specification, so compatible installers such as Vortex pre-select it
+while still allowing the user to uncheck it.
 
 Each checked option installs a small marker under:
 
@@ -42,10 +54,10 @@ Use the same provider selections on every Skyrim Together client.
 
 ## v0.2.13 BodyHairSliders integration
 
-The v0.2.11 network layer transported one pubic overlay state. v0.2.13 keeps the
-same `PUBES` packet envelope for compatibility but the texture payload can now
-contain a deterministic `BHS1` aggregate representing several independent
-RaceMenu Body overlay regions at once.
+The v0.2.11 network layer transported one pubic overlay state. v0.2.13 introduced
+the `BHS1` aggregate while keeping the same `PUBES` packet envelope for wire
+compatibility. v0.2.14 keeps that protocol and refines provider selection and
+detection in the FOMOD.
 
 Managed regions follow the current BodyHairSliders provider model:
 
@@ -66,9 +78,9 @@ Recognized providers/paths include:
   - `dePog - Navel - ...`
   - `dePog - Crack - ...`
   - `dePog - Beast - ...`
-- Pubic Hairstyles All In One / Pubes Forever female and male assets under
-  `ak_rm_pubic_hair_all_in_one`
-- HIMBO V3 Bodyhair Body Paints (`HIMBO_BodyHair_*`)
+- Pubic Hairstyles All In One CBBE / Pubes Forever Female and Pubes Forever Male
+  assets under `ak_rm_pubic_hair_all_in_one`
+- HIMBO V3 Bodyhair Overlays for Racemenu (`HIMBO_BodyHair_*`)
 - OPubes-compatible pubic overlay paths, tied to the selected female/male pubic
   provider for the actor's sex
 
@@ -108,7 +120,7 @@ The old v0.2.11 single-pubic state is still accepted as a compatibility input.
 At startup:
 
 ```text
-MorphSyncTogether v0.2.13 loading
+MorphSyncTogether v0.2.14 loading
 MST APPEARANCE interfaces READY ...
 ```
 
@@ -138,5 +150,5 @@ all four provider marker packages and the FOMOD XML, stages the installer,
 creates the ZIP under `dist/`, and verifies all required archive entries.
 
 ```text
-dist/MorphSyncTogether-v0.2.13-FOMOD.zip
+dist/MorphSyncTogether-v0.2.14-FOMOD.zip
 ```
