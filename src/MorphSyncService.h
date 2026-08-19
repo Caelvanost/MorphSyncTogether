@@ -83,13 +83,10 @@ namespace MorphSyncTogether
             std::string_view sender,
             std::string_view payload);
 
-        // Proven legacy implementation is textually included by the v0.3.x
-        // adapter so only transport/proxy resolution change on the STRPM branch.
         void HandleUdpPacketLegacy(std::string packet);
         void HandlePubicPacketLegacy(
             std::string_view sender,
             std::string_view payload);
-        RE::Actor* ResolveRemoteProxyByNameLegacy(std::string_view name) const;
 
         void TryApplyRemote(
             const std::string& sender,
