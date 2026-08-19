@@ -1,11 +1,14 @@
 #include "PCH.h"
 #include "MorphSyncService.h"
+#include "UdpTransport.h"
 
-// Compile the v0.2.11 service intact under legacy names for the two packet
-// entry points that need wider BodyHairSliders payload support in v0.2.13.
+// Compile the proven legacy service under alternate names for the entry points
+// replaced by the BodyHair + STRPM adapter on this branch.
 #define HandleUdpPacket HandleUdpPacketLegacy
 #define HandlePubicPacket HandlePubicPacketLegacy
+#define ResolveRemoteProxyByName ResolveRemoteProxyByNameLegacy
 #include "MorphSyncService.cpp"
+#undef ResolveRemoteProxyByName
 #undef HandlePubicPacket
 #undef HandleUdpPacket
 
@@ -68,9 +71,6 @@ namespace MorphSyncTogether
             return;
         }
 
-        // v0.2.11 allowed a single texture path and capped it at 512 bytes.
-        // v0.2.13 carries a BHS1 aggregate containing up to eight independent
-        // BodyHairSliders regions, so keep a strict but wider bound.
         constexpr std::size_t kMaxBodyHairAggregateBytes = 4096;
         if (!texture || texture->size() > kMaxBodyHairAggregateBytes ||
             !std::isfinite(alpha) || (*present != 0 && texture->empty())) {
@@ -120,5 +120,19 @@ namespace MorphSyncTogether
             hash);
 
         TryApplyRemotePubic(sender, true);
+    }
+
+    RE::Actor* MorphSyncService::ResolveRemoteProxyByName(std::string_view sender) const
+    {
+        auto* actor = UdpTransport::GetSingleton().ResolveProxyBySender(sender);
+        if (!actor) {
+            return nullptr;
+        }
+
+        SKSE::log::trace(
+            "MST STRPM PROXY RESOLVE sender=\"{}\" formId={:08X}",
+            sender,
+            actor->GetFormID());
+        return actor;
     }
 }
