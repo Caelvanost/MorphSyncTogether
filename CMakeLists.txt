@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
     MorphSyncTogether
-    VERSION 0.2.14
+    VERSION 0.3.0
     LANGUAGES CXX
 )
 
@@ -19,6 +19,7 @@ add_commonlibsse_plugin(${PROJECT_NAME}
         src/Config.h
         src/UdpTransport.cpp
         src/UdpTransport.h
+        src/STRPMCompat.h
         src/SkeeInterfaces.h
         src/AppearanceProbeBodyHair.cpp
         src/AppearanceProbe.h
@@ -41,5 +42,3 @@ target_compile_definitions(${PROJECT_NAME}
         WIN32_LEAN_AND_MEAN
         NOMINMAX
 )
-
-target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32)
