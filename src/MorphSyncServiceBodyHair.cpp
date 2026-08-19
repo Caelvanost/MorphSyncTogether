@@ -1,14 +1,11 @@
 #include "PCH.h"
 #include "MorphSyncService.h"
-#include "UdpTransport.h"
 
-// Compile the proven legacy service under alternate names for the entry points
-// replaced by the BodyHair + STRPM adapter on this branch.
+// Compile the proven legacy service under alternate names for the packet
+// entry points replaced by the BodyHair adapter on this branch.
 #define HandleUdpPacket HandleUdpPacketLegacy
 #define HandlePubicPacket HandlePubicPacketLegacy
-#define ResolveRemoteProxyByName ResolveRemoteProxyByNameLegacy
 #include "MorphSyncService.cpp"
-#undef ResolveRemoteProxyByName
 #undef HandlePubicPacket
 #undef HandleUdpPacket
 
@@ -120,19 +117,5 @@ namespace MorphSyncTogether
             hash);
 
         TryApplyRemotePubic(sender, true);
-    }
-
-    RE::Actor* MorphSyncService::ResolveRemoteProxyByName(std::string_view sender) const
-    {
-        auto* actor = UdpTransport::GetSingleton().ResolveProxyBySender(sender);
-        if (!actor) {
-            return nullptr;
-        }
-
-        SKSE::log::trace(
-            "MST STRPM PROXY RESOLVE sender=\"{}\" formId={:08X}",
-            sender,
-            actor->GetFormID());
-        return actor;
     }
 }
