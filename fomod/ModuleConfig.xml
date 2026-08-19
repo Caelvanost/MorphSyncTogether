@@ -5,50 +5,18 @@
     <folder source="00 Core" destination="" priority="0" />
   </requiredInstallFiles>
   <installSteps order="Explicit">
-    <installStep name="BodyHairSliders provider mods">
+    <installStep name="Body hair overlay packs">
       <optionalFileGroups order="Explicit">
-        <group name="Which BodyHairSliders provider mods do you use?" type="SelectAny">
+        <group name="Select the BodyHairSliders providers you have installed" type="SelectAny">
           <plugins order="Explicit">
-            <plugin name="Pubic Hairstyles All In One CBBE / Pubes Forever Female">
-              <description>Synchronizes female pubic overlays from Pubic Hairstyles All In One CBBE / Pubes Forever Female.</description>
-              <files><folder source="10 Pubes Forever Female" destination="" priority="10" /></files>
-              <typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="AK_RM_PubicStyles_All_In_One.esp" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor>
-            </plugin>
-            <plugin name="Pubes Forever Male">
-              <description>Synchronizes male pubic overlays from Pubes Forever Male.</description>
-              <files><folder source="20 Pubes Forever Male" destination="" priority="20" /></files>
-              <typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="AK_RM_PubicStyles_All_In_One_M.esp" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor>
-            </plugin>
-            <plugin name="Natural Pubic Hairstyles">
-              <description>Synchronizes the female pubic overlays provided by Natural Pubic Hairstyles.</description>
-              <files><folder source="30 Natural Pubic Hairstyles" destination="" priority="30" /></files>
-              <typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="NaturalPubicHairstyles.esp" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor>
-            </plugin>
-            <plugin name="Natural Pubic Hairstyles - UBE">
-              <description>Synchronizes the UBE pubic overlays provided by Natural Pubic Hairstyles - UBE.</description>
-              <files><folder source="40 Natural Pubic Hairstyles UBE" destination="" priority="40" /></files>
-              <typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="UBENaturalPubicHairstyles.esp" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor>
-            </plugin>
-            <plugin name="More Pubes for SlaveTats">
-              <description>Synchronizes the female pubic textures from More Pubes for SlaveTats. This provider has no plugin file, so detection uses one of its loose textures.</description>
-              <files><folder source="50 More Pubes for SlaveTats" destination="" priority="50" /></files>
-              <typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="textures\actors\character\slavetats\ZckeZckTPubicHair\ZckeZcktPubicA_1.dds" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor>
-            </plugin>
-            <plugin name="Nordic Warmaiden Body Hair">
-              <description>Synchronizes Nordic Warmaiden pubic, armpit, stomach, butt and back hair overlays.</description>
-              <files><folder source="60 Nordic Warmaiden" destination="" priority="60" /></files>
-              <typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="Nordic Warmaiden Body Hair.esp" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor>
-            </plugin>
-            <plugin name="HIMBO V3 Bodyhair Overlays for Racemenu">
-              <description>Synchronizes the Body overlay regions provided by HIMBO V3 Bodyhair Overlays for Racemenu.</description>
-              <files><folder source="70 HIMBO Bodyhair" destination="" priority="70" /></files>
-              <typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="HIMBOBodyhairOverlay.esp" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor>
-            </plugin>
-            <plugin name="OPubes NG compatibility bridge">
-              <description>Enables synchronization of OPubes-compatible pubic overlays handled through the BodyHairSliders compatibility bridge.</description>
-              <files><folder source="80 OPubes NG" destination="" priority="80" /></files>
-              <typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="OPubes.esp" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor>
-            </plugin>
+            <plugin name="Nordic Warmaiden Body Hair"><description>Synchronizes female pubic, armpit, stomach, butt and back styles from Nordic Warmaiden Body Hair.</description><files><folder source="60 Nordic Warmaiden" destination="" priority="60" /></files><typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="Nordic Warmaiden Body Hair.esp" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor></plugin>
+            <plugin name="HIMBO V3 Bodyhair Overlays for Racemenu"><description>Synchronizes male body-hair Body overlays from the HIMBO body-hair pack.</description><files><folder source="70 HIMBO Bodyhair" destination="" priority="70" /></files><typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="HIMBOBodyhairOverlay.esp" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor></plugin>
+            <plugin name="Pubes Forever Female / Pubic Hairstyles All In One CBBE"><description>Synchronizes the female pubic-hair overlays supplied by Pubes Forever Female / Pubic Hairstyles All In One CBBE.</description><files><folder source="10 Pubes Forever Female" destination="" priority="10" /></files><typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="AK_RM_PubicStyles_All_In_One.esp" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor></plugin>
+            <plugin name="Pubes Forever Male"><description>Synchronizes the male pubic-hair overlays supplied by Pubes Forever for Males.</description><files><folder source="20 Pubes Forever Male" destination="" priority="20" /></files><typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="AK_RM_PubicStyles_All_In_One_M.esp" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor></plugin>
+            <plugin name="OPubes NG compatibility"><description>Enables synchronization of OPubes-compatible pubic overlays handled through the BodyHairSliders compatibility provider.</description><files><folder source="80 OPubes NG" destination="" priority="80" /></files><typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="OPubes.esp" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor></plugin>
+            <plugin name="More Pubes for SlaveTats"><description>Synchronizes the 48 female pubic-hair textures from More Pubes for SlaveTats.</description><files><folder source="50 More Pubes for SlaveTats" destination="" priority="50" /></files><typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="textures\actors\character\slavetats\ZckeZckTPubicHair\ZckeZcktPubic00Heart.dds" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor></plugin>
+            <plugin name="Natural Pubic Hairstyles"><description>Synchronizes the female RaceMenu body-paint pubic hairstyles supplied by the standard Natural Pubic Hairstyles variants.</description><files><folder source="30 Natural Pubic Hairstyles" destination="" priority="30" /></files><typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="NaturalPubicHairstyles.esp" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor></plugin>
+            <plugin name="Natural Pubic Hairstyles - UBE"><description>Synchronizes the female pubic hairstyles supplied by the UBE Natural Pubic Hairstyles variants.</description><files><folder source="40 Natural Pubic Hairstyles UBE" destination="" priority="40" /></files><typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="UBENaturalPubicHairstyles.esp" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor></plugin>
           </plugins>
         </group>
       </optionalFileGroups>
