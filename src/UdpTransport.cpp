@@ -8,7 +8,7 @@ namespace MorphSyncTogether
 {
     namespace
     {
-        constexpr char kChannel[] = "caelvanost.morphsync_together.v1";
+        constexpr char kChannel[] = "morphsync.together.v1";
         constexpr std::string_view kGameplayPrefix = "MSTUDP|v1|";
     }
 
