@@ -83,13 +83,13 @@ namespace MorphSyncTogether
             std::string_view sender,
             std::string_view payload);
 
-        // Original v0.2.11 packet handlers compiled under alternate names by
-        // MorphSyncServiceBodyHair.cpp. The public v0.2.13 dispatcher keeps
-        // MORPH behavior unchanged while accepting larger BHS1 overlay payloads.
+        // Proven legacy implementation is textually included by the v0.3.x
+        // adapter so only transport/proxy resolution change on the STRPM branch.
         void HandleUdpPacketLegacy(std::string packet);
         void HandlePubicPacketLegacy(
             std::string_view sender,
             std::string_view payload);
+        RE::Actor* ResolveRemoteProxyByNameLegacy(std::string_view name) const;
 
         void TryApplyRemote(
             const std::string& sender,
