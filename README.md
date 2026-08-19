@@ -1,154 +1,96 @@
-# MorphSyncTogether v0.2.14 - BodyHairSliders overlay sync
+# MorphSyncTogether v0.3.0 - STRPM transport
 
-MorphSyncTogether is an SKSE plugin that keeps remote Skyrim Together player
-appearance data authoritative across clients. It synchronizes RaceMenu
-BodyMorphs, preserves FaceGen makeup after local mod changes, and can optionally
-synchronize the Body overlays used by BodyHairSliders and OPubes.
+MorphSyncTogether keeps remote Skyrim Together player appearance authoritative across clients.
+
+## v0.3.0
+
+This branch replaces MorphSyncTogether's private UDP/autodiscovery transport with **STRPluginMessagingAPI (STRPM)**.
+
+Preserved functionality:
+
+- RaceMenu BodyMorph synchronization
+- OBody drift correction/reapplication
+- FaceGen makeup preservation/rebind
+- BodyHairSliders / OPubes semantic overlay synchronization
+- independent FOMOD provider selection
+- periodic authoritative resend and remote reapply
+
+STRPM transport details:
+
+- channel: `caelvanost.morphsync_together.v1`
+- target: all connected STR players
+- flags: reliable + ordered
+- sender identity comes from authenticated STRPM message metadata
+- callbacks are queued onto the SKSE game thread before MorphSync processes them
+- STRPM ProxyResolver is loaded and sender ConnectionIDs are retained by the adapter for the ongoing proxy-resolution migration
+- MorphSync no longer opens or discovers LAN UDP peers
 
 ## Requirements
 
-- Skyrim Together Reborn
+- Skyrim Together Reborn 1.8.0-compatible setup
 - SKSE64
 - RaceMenu
 - Address Library for SKSE Plugins
-- The same MorphSyncTogether version and FOMOD provider selections on every client
+- **STRPluginMessagingAPI v0.8.2 or newer compatible API/ProxyResolver**
+- the STRPM server relay required by your STRPluginMessagingAPI installation
+- the same MorphSyncTogether version and provider selections on all clients
 
-OBody, OStim, BodyHairSliders and OPubes are supported integrations, not hard
-requirements for the core BodyMorph/FaceGen functionality.
+OBody, OStim, BodyHairSliders and OPubes remain optional integrations.
 
-## Installation
+## BodyHairSliders providers
 
-Install `MorphSyncTogether-v0.2.14-FOMOD.zip` with Vortex or another
-FOMOD-compatible mod manager.
+The FOMOD exposes the same provider names used by BodyHairSliders and marks detected plugins as `Recommended`:
 
-The BodyHairSliders provider page allows any combination of four independent
-provider mods, using the same canonical names as BodyHairSliders:
+- **Pubic Hairstyles All In One CBBE / Pubes Forever Female** — `AK_RM_PubicStyles_All_In_One.esp`
+- **Pubes Forever Male** — `AK_RM_PubicStyles_All_In_One_M.esp`
+- **Nordic Warmaiden Body Hair** — `Nordic Warmaiden Body Hair.esp`
+- **HIMBO V3 Bodyhair Overlays for Racemenu** — `HIMBOBodyhairOverlay.esp`
 
-- **Pubic Hairstyles All In One CBBE / Pubes Forever Female**
-- **Pubes Forever Male**
-- **Nordic Warmaiden Body Hair**
-- **HIMBO V3 Bodyhair Overlays for Racemenu**
-
-The FOMOD detects the provider plugins used by BodyHairSliders:
-
-- `AK_RM_PubicStyles_All_In_One.esp`
-- `AK_RM_PubicStyles_All_In_One_M.esp`
-- `Nordic Warmaiden Body Hair.esp`
-- `HIMBOBodyhairOverlay.esp`
-
-When a matching plugin is active, that provider is exposed as `Recommended` by
-the FOMOD specification, so compatible installers such as Vortex pre-select it
-while still allowing the user to uncheck it.
-
-Each checked option installs a small marker under:
+Each selected provider installs a marker under:
 
 ```text
 Data/SKSE/Plugins/MorphSyncTogether/Providers/
 ```
 
-MorphSyncTogether only captures and applies textures belonging to providers
-whose marker is present. This means an unchecked pack remains outside network
-authority even if its assets are installed locally.
-
-Use the same provider selections on every Skyrim Together client.
-
-## v0.2.13 BodyHairSliders integration
-
-The v0.2.11 network layer transported one pubic overlay state. v0.2.13 introduced
-the `BHS1` aggregate while keeping the same `PUBES` packet envelope for wire
-compatibility. v0.2.14 keeps that protocol and refines provider selection and
-detection in the FOMOD.
-
-Managed regions follow the current BodyHairSliders provider model:
-
-- pubic
-- armpits
-- chest
-- stomach / belly
-- back
-- arms
-- legs
-- butt
-
-Recognized providers/paths include:
-
-- Nordic Warmaiden Body Hair
-  - `dePog - Pubes - ...`
-  - `dePog - Pits - ...`
-  - `dePog - Navel - ...`
-  - `dePog - Crack - ...`
-  - `dePog - Beast - ...`
-- Pubic Hairstyles All In One CBBE / Pubes Forever Female and Pubes Forever Male
-  assets under `ak_rm_pubic_hair_all_in_one`
-- HIMBO V3 Bodyhair Overlays for Racemenu (`HIMBO_BodyHair_*`)
-- OPubes-compatible pubic overlay paths, tied to the selected female/male pubic
-  provider for the actor's sex
-
-The synchronizer captures each managed region independently, including its
-texture, packed tint color and alpha. On a remote STR proxy it replaces the
-locally-randomized overlay for the same semantic region. If the owner no longer
-has a selected region, the corresponding remote managed overlay is cleared.
-
-RaceMenu slot numbers are deliberately not network-authoritative. If the same
-semantic region occupies different `Body [Ovl#]` slots on two clients, that is
-not considered drift. When a new local slot is required, MorphSyncTogether
-reserves the highest free Body slot, matching BodyHairSliders' allocation
-strategy and avoiding occupied unrelated Body Paint slots.
-
-Only positively recognized, FOMOD-enabled body-hair texture families are
-managed. Tattoos, generic body paints and temporary OCum overlays remain outside
-this authority.
-
-The old v0.2.11 single-pubic state is still accepted as a compatibility input.
-
-## Other features
-
-- Remote BodyMorph snapshots override locally randomized OBody presets.
-- Morph drift is detected and corrected immediately, with periodic reassertion
-  for late-created Skyrim Together proxies.
-- The first healthy FaceGen tint material remains authoritative for each remote
-  network identity.
-- If OStim or another local system replaces a remote FaceGen tint, the cached
-  texture is restored and rebound through the shader setup path.
-- Follow-up material passes cover late render work without rebuilding the
-  actor's full head.
-- Automatic LAN discovery uses UDP port `27992`; a manual peer can be configured
-  in `Data/SKSE/Plugins/MorphSyncTogether.ini`.
+Only enabled provider families are network-authoritative. Tattoos, generic Body Paints and temporary OCum overlays are excluded.
 
 ## Expected log
 
-At startup:
+Successful startup should include:
 
 ```text
-MorphSyncTogether v0.2.14 loading
-MST APPEARANCE interfaces READY ...
+MorphSyncTogether v0.3.0 STRPM loading
+MST STRPM transport READY channel=caelvanost.morphsync_together.v1 ...
+Morph sync started ...
 ```
 
-When FaceGen makeup is restored:
+Incoming traffic should produce diagnostics such as:
 
 ```text
-MST FACEGEN TINT DRIFT ... action=restore+rebind
-MST FACEGEN MATERIAL REBIND ... restored=1 rebound=1 setup=1 finish=1
+MST STRPM RX sender="..." connection=... bytes=... sequence=...
+MST MORPH APPLY ...
+MST BODYHAIR RX ...
+MST BODYHAIR APPLY ...
 ```
 
-With one or more body-hair packs selected, the existing network envelope still
-logs `PUBES`, while per-region application logs use Body Hair diagnostics:
+If STRPM is missing or incompatible:
 
 ```text
-MST PUBES TX ...
-MST BODYHAIR RX ... aggregate=1
-MST BODYHAIR APPLY ... region=armpits ...
-MST BODYHAIR APPLY ... region=pubic ...
-MST BODYHAIR CLEAR ... region=chest ...
-MST PUBES APPLY ... applied=1 verified=1
+MST STRPM unavailable: STRPluginMessagingAPI.dll is not loaded
 ```
 
 ## Build
 
-Run `build-vortex.ps1`. It compiles the Release DLL, validates the core INI,
-all four provider marker packages and the FOMOD XML, stages the installer,
-creates the ZIP under `dist/`, and verifies all required archive entries.
+Run:
+
+```powershell
+.\build-vortex.ps1
+```
+
+Output:
 
 ```text
-dist/MorphSyncTogether-v0.2.14-FOMOD.zip
+dist/MorphSyncTogether-v0.3.0-FOMOD.zip
 ```
+
+The branch is intended as the first STRPM migration build and should be runtime-tested on two clients before merging into `main`.
