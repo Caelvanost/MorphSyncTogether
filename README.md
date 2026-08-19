@@ -1,8 +1,8 @@
-# MorphSyncTogether v0.3.0 - STRPM transport
+# MorphSyncTogether v0.3.1 - STRPM transport
 
 MorphSyncTogether keeps remote Skyrim Together player appearance authoritative across clients.
 
-## v0.3.0
+## v0.3.1
 
 This branch replaces MorphSyncTogether's private UDP/autodiscovery transport with **STRPluginMessagingAPI (STRPM)**.
 
@@ -17,12 +17,12 @@ Preserved functionality:
 
 STRPM transport details:
 
-- channel: `caelvanost.morphsync_together.v1`
+- channel: `morphsync.together.v1`
 - target: all connected STR players
 - flags: reliable + ordered
 - sender identity comes from authenticated STRPM message metadata
 - callbacks are queued onto the SKSE game thread before MorphSync processes them
-- STRPM ProxyResolver is loaded and sender ConnectionIDs are retained by the adapter for the ongoing proxy-resolution migration
+- STRPM ProxyResolver is loaded and sender ConnectionIDs are retained by the adapter for proxy resolution
 - MorphSync no longer opens or discovers LAN UDP peers
 
 ## Requirements
@@ -59,8 +59,8 @@ Only enabled provider families are network-authoritative. Tattoos, generic Body 
 Successful startup should include:
 
 ```text
-MorphSyncTogether v0.3.0 STRPM loading
-MST STRPM transport READY channel=caelvanost.morphsync_together.v1 ...
+MorphSyncTogether v0.3.1 STRPM loading
+MST STRPM transport READY channel=morphsync.together.v1 ...
 Morph sync started ...
 ```
 
@@ -90,7 +90,7 @@ Run:
 Output:
 
 ```text
-dist/MorphSyncTogether-v0.3.0-FOMOD.zip
+dist/MorphSyncTogether-v0.3.1-FOMOD.zip
 ```
 
 The branch is intended as the first STRPM migration build and should be runtime-tested on two clients before merging into `main`.
