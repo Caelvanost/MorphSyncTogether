@@ -1,15 +1,13 @@
 #pragma once
 
 #include "PCH.h"
-
-// Keep Win32/Winsock out of the precompiled header. CommonLibSSE-NG
-// must be parsed before Windows SDK headers to avoid SKSE::WinAPI collisions.
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include "Config.h"
+#include "STRPMCompat.h"
 
 namespace MorphSyncTogether
 {
+    // Compatibility name retained to minimize churn in the proven MorphSync
+    // service. On the strpm branch this class no longer opens any UDP socket:
+    // it is a thin consumer of STRPluginMessagingAPI + ProxyResolver.
     class UdpTransport
     {
     public:
@@ -25,52 +23,29 @@ namespace MorphSyncTogether
         }
 
         [[nodiscard]] std::string GetLocalClientName() const;
+        [[nodiscard]] RE::Actor* ResolveProxyBySender(std::string_view sender) const;
 
     private:
-        struct Peer
-        {
-            sockaddr_in address{};
-            std::string name;
-            std::string instanceID;
-            std::chrono::steady_clock::time_point lastSeen{};
-        };
-
         UdpTransport() = default;
         ~UdpTransport();
         UdpTransport(const UdpTransport&) = delete;
         UdpTransport& operator=(const UdpTransport&) = delete;
 
-        void ReceiverLoop();
-        void DiscoveryLoop(std::stop_token stopToken);
-        void SendHello();
-        void SendHelloTo(const sockaddr_in& destination);
-        bool HandleDiscoveryPacket(std::string_view packet, const sockaddr_in& source);
-        void RegisterPeer(
-            const sockaddr_in& source,
-            std::uint16_t advertisedPort,
-            std::string_view name,
-            std::string_view instanceID);
-        void TouchPeerFromGameplayPacket(const sockaddr_in& source, std::string_view packet);
-        void ExpirePeers();
-        std::vector<sockaddr_in> SnapshotPeers();
+        static void STRPM_CALL OnMessage(const STRPM::Message* message, void* userData);
+        void HandleMessage(const STRPM::Message& message);
+        void QueueMessage(std::string packet);
 
         static std::string SanitizeField(std::string value);
-        static std::optional<std::string> ReadField(std::string_view packet, std::string_view key);
-        static std::string AddressToString(const sockaddr_in& address);
+        static const char* ResultName(STRPM::Result result) noexcept;
 
-        Config _config{};
-        SOCKET _socket{ INVALID_SOCKET };
-        sockaddr_in _broadcast{};
-        sockaddr_in _manualPeer{};
-        bool _hasManualPeer{ false };
+        const STRPM::Interface* _api{ nullptr };
+        const STRPM::ProxyResolverInterface* _resolver{ nullptr };
+        STRPM::ListenerHandle _listener{};
+        HMODULE _module{ nullptr };
 
-        std::jthread _receiver;
-        std::jthread _discovery;
         std::atomic_bool _running{ false };
-        std::mutex _sendMutex;
-
-        mutable std::mutex _peerMutex;
-        std::unordered_map<std::string, Peer> _peers;
-        std::string _instanceID;
+        mutable std::mutex _senderMutex;
+        std::unordered_map<std::string, STRPM::ConnectionID> _senderConnections;
+        std::string _localName;
     };
 }
