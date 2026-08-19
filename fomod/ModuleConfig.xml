@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://qconsulting.ca/fo3/ModConfig5.0.xsd">
-  <moduleName>MorphSyncTogether 0.2.14</moduleName>
+  <moduleName>MorphSyncTogether 0.3.0</moduleName>
   <moduleImage path="fomod\ModuleImage.png" />
   <requiredInstallFiles>
     <folder source="00 Core" destination="" priority="0" />
@@ -12,79 +12,23 @@
           <plugins order="Explicit">
             <plugin name="Pubic Hairstyles All In One CBBE / Pubes Forever Female">
               <description>Synchronizes female pubic overlays from Pubic Hairstyles All In One CBBE / Pubes Forever Female. Also enables compatible OPubes female pubic overlays.</description>
-              <files>
-                <folder source="10 Pubes Forever Female" destination="" priority="10" />
-              </files>
-              <typeDescriptor>
-                <dependencyType>
-                  <defaultType name="Optional" />
-                  <patterns>
-                    <pattern>
-                      <dependencies operator="And">
-                        <fileDependency file="AK_RM_PubicStyles_All_In_One.esp" state="Active" />
-                      </dependencies>
-                      <type name="Recommended" />
-                    </pattern>
-                  </patterns>
-                </dependencyType>
-              </typeDescriptor>
+              <files><folder source="10 Pubes Forever Female" destination="" priority="10" /></files>
+              <typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="AK_RM_PubicStyles_All_In_One.esp" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor>
             </plugin>
             <plugin name="Pubes Forever Male">
               <description>Synchronizes male pubic overlays from Pubes Forever Male. Also enables compatible OPubes male pubic overlays.</description>
-              <files>
-                <folder source="20 Pubes Forever Male" destination="" priority="20" />
-              </files>
-              <typeDescriptor>
-                <dependencyType>
-                  <defaultType name="Optional" />
-                  <patterns>
-                    <pattern>
-                      <dependencies operator="And">
-                        <fileDependency file="AK_RM_PubicStyles_All_In_One_M.esp" state="Active" />
-                      </dependencies>
-                      <type name="Recommended" />
-                    </pattern>
-                  </patterns>
-                </dependencyType>
-              </typeDescriptor>
+              <files><folder source="20 Pubes Forever Male" destination="" priority="20" /></files>
+              <typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="AK_RM_PubicStyles_All_In_One_M.esp" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor>
             </plugin>
             <plugin name="Nordic Warmaiden Body Hair">
               <description>Synchronizes Nordic Warmaiden Body Hair pubic, armpit, stomach, butt and back hair overlays.</description>
-              <files>
-                <folder source="30 Nordic Warmaiden" destination="" priority="30" />
-              </files>
-              <typeDescriptor>
-                <dependencyType>
-                  <defaultType name="Optional" />
-                  <patterns>
-                    <pattern>
-                      <dependencies operator="And">
-                        <fileDependency file="Nordic Warmaiden Body Hair.esp" state="Active" />
-                      </dependencies>
-                      <type name="Recommended" />
-                    </pattern>
-                  </patterns>
-                </dependencyType>
-              </typeDescriptor>
+              <files><folder source="30 Nordic Warmaiden" destination="" priority="30" /></files>
+              <typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="Nordic Warmaiden Body Hair.esp" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor>
             </plugin>
             <plugin name="HIMBO V3 Bodyhair Overlays for Racemenu">
               <description>Synchronizes HIMBO V3 Bodyhair Overlays for Racemenu arms, armpits, butt, back, stomach, chest and legs Body overlays.</description>
-              <files>
-                <folder source="40 HIMBO Bodyhair" destination="" priority="40" />
-              </files>
-              <typeDescriptor>
-                <dependencyType>
-                  <defaultType name="Optional" />
-                  <patterns>
-                    <pattern>
-                      <dependencies operator="And">
-                        <fileDependency file="HIMBOBodyhairOverlay.esp" state="Active" />
-                      </dependencies>
-                      <type name="Recommended" />
-                    </pattern>
-                  </patterns>
-                </dependencyType>
-              </typeDescriptor>
+              <files><folder source="40 HIMBO Bodyhair" destination="" priority="40" /></files>
+              <typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="HIMBOBodyhairOverlay.esp" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor>
             </plugin>
           </plugins>
         </group>
