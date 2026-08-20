@@ -87,6 +87,9 @@ namespace MorphSyncTogether
         void HandlePubicPacketLegacy(
             std::string_view sender,
             std::string_view payload);
+        void TryApplyRemoteLegacy(
+            const std::string& sender,
+            bool force);
 
         void TryApplyRemote(
             const std::string& sender,
