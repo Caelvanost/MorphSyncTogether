@@ -4,11 +4,13 @@
 // Compile the proven legacy service under alternate names for the packet
 // entry points and morph-apply path replaced by the adapters on this branch.
 #define HandleUdpPacket HandleUdpPacketLegacy
+#define HandleMorphPacket HandleMorphPacketLegacy
 #define HandlePubicPacket HandlePubicPacketLegacy
 #define TryApplyRemote TryApplyRemoteLegacy
 #include "MorphSyncService.cpp"
 #undef TryApplyRemote
 #undef HandlePubicPacket
+#undef HandleMorphPacket
 #undef HandleUdpPacket
 
 namespace MorphSyncTogether
@@ -36,6 +38,132 @@ namespace MorphSyncTogether
         if (morphPos != std::string::npos) {
             HandleMorphPacket(*sender, std::string_view(packet).substr(morphPos + 1));
         }
+    }
+
+    void MorphSyncService::HandleMorphPacket(
+        std::string_view senderView,
+        std::string_view payload)
+    {
+        const std::string sender(senderView);
+        const auto hash = ParseHex64(ReadField(payload, "hash"));
+        const auto sequence = ParseSize(ReadField(payload, "seq"));
+        const auto count = ParseSize(ReadField(payload, "count"));
+        const auto props = ReadField(payload, "props");
+
+        if (hash == 0 || !sequence || !count || !props || *count == 0 || *count > 128 || *sequence >= *count) {
+            SKSE::log::warn("MST MORPH RX invalid packet sender=\"{}\"", sender);
+            return;
+        }
+
+        bool complete = false;
+        {
+            std::scoped_lock lock(_remoteMutex);
+            auto& assembly = _assemblies[sender];
+            if (assembly.hash != hash || assembly.expectedChunks != *count) {
+                assembly = {};
+                assembly.hash = hash;
+                assembly.expectedChunks = *count;
+                assembly.chunks.resize(*count);
+                assembly.received.assign(*count, false);
+            }
+
+            assembly.chunks[*sequence] = *props;
+            assembly.received[*sequence] = true;
+            assembly.updated = std::chrono::steady_clock::now();
+            complete = std::all_of(
+                assembly.received.begin(),
+                assembly.received.end(),
+                [](bool value) { return value; });
+        }
+
+        SKSE::log::info(
+            "MST MORPH RX CHUNK sender=\"{}\" hash={:016X} seq={}/{} bytes={} complete={}",
+            sender,
+            hash,
+            *sequence + 1,
+            *count,
+            props->size(),
+            complete ? 1 : 0);
+
+        if (!complete) {
+            return;
+        }
+
+        std::vector<MorphValue> values;
+        std::uint32_t invalid = 0;
+        bool sameAppliedSnapshot = false;
+        {
+            std::scoped_lock lock(_remoteMutex);
+            const auto it = _assemblies.find(sender);
+            if (it == _assemblies.end()) {
+                return;
+            }
+
+            for (const auto& chunk : it->second.chunks) {
+                if (chunk.empty()) {
+                    continue;
+                }
+
+                for (const auto& token : Split(chunk, ';')) {
+                    if (token.empty()) {
+                        continue;
+                    }
+
+                    const auto fields = Split(token, ',');
+                    if (fields.size() != 3) {
+                        ++invalid;
+                        continue;
+                    }
+
+                    try {
+                        const auto morphName = HexDecode(fields[0]);
+                        const auto morphKey = HexDecode(fields[1]);
+                        const float value = std::stof(fields[2]);
+                        if (!morphName || !morphKey || morphName->empty() || morphKey->empty() || !std::isfinite(value)) {
+                            ++invalid;
+                            continue;
+                        }
+
+                        values.push_back(MorphValue{ *morphName, *morphKey, value });
+                    } catch (...) {
+                        ++invalid;
+                    }
+                }
+            }
+
+            _assemblies.erase(it);
+
+            auto& snapshot = _remoteSnapshots[sender];
+            sameAppliedSnapshot = snapshot.hash == hash && snapshot.everApplied;
+            const auto previousActorFormID = snapshot.lastActorFormID;
+            const auto previousLastApply = snapshot.lastApply;
+
+            snapshot.hash = hash;
+            snapshot.values = values;
+
+            if (sameAppliedSnapshot) {
+                snapshot.lastActorFormID = previousActorFormID;
+                snapshot.lastApply = previousLastApply;
+                snapshot.everApplied = true;
+            } else {
+                snapshot.everApplied = false;
+                snapshot.lastActorFormID = 0;
+                snapshot.lastApply = {};
+            }
+        }
+
+        SKSE::log::info(
+            "MST MORPH RX COMPLETE sender=\"{}\" hash={:016X} values={} invalid={} repeated={}",
+            sender,
+            hash,
+            values.size(),
+            invalid,
+            sameAppliedSnapshot ? 1 : 0);
+
+        // A new/changed snapshot is forced once. Periodic STRPM resends of an
+        // already-applied snapshot go through the optimized path, which compares
+        // the live proxy hash and avoids rebuilding RaceMenu when it already matches.
+        TryApplyRemote(sender, !sameAppliedSnapshot);
     }
 
     void MorphSyncService::HandlePubicPacket(
@@ -161,9 +289,6 @@ namespace MorphSyncTogether
         const auto liveBeforeHash = HashMorphs(liveBefore);
         const bool drift = liveBeforeHash != authoritativeDataHash;
 
-        // STRPM can periodically resend the same authoritative snapshot. If the
-        // proxy already matches it, refresh bookkeeping only and avoid another
-        // ClearMorphs/SetMorph/ApplyBodyMorphs/UpdateModelWeight pass.
         if (!drift) {
             {
                 std::scoped_lock lock(_remoteMutex);
@@ -175,14 +300,12 @@ namespace MorphSyncTogether
                 }
             }
 
-            if (force) {
-                SKSE::log::trace(
-                    "MST MORPH APPLY SKIP sender=\"{}\" actor={:08X} values={} hash={:016X} reason=already-authoritative",
-                    sender,
-                    actor->GetFormID(),
-                    liveBefore.size(),
-                    liveBeforeHash);
-            }
+            SKSE::log::trace(
+                "MST MORPH APPLY SKIP sender=\"{}\" actor={:08X} values={} hash={:016X} reason=already-authoritative",
+                sender,
+                actor->GetFormID(),
+                liveBefore.size(),
+                liveBeforeHash);
             return;
         }
 
