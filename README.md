@@ -1,10 +1,12 @@
-# MorphSyncTogether v0.3.2 - STRPM transport
+# MorphSyncTogether v0.3.3 - STRPM transport
 
 MorphSyncTogether keeps remote Skyrim Together player appearance authoritative across clients.
 
-## v0.3.2
+## v0.3.3
 
 This branch uses **STRPluginMessagingAPI (STRPM)** instead of MorphSyncTogether's former private UDP/autodiscovery transport.
+
+v0.3.3 keeps the periodic authoritative resend for robustness, but avoids rebuilding an already-correct remote RaceMenu morph state. When a repeated STRPM snapshot arrives and the live proxy morph hash already matches the authoritative hash, MorphSyncTogether refreshes its bookkeeping and skips `ClearMorphs`, `SetMorph`, `ApplyBodyMorphs` and `UpdateModelWeight`.
 
 Preserved functionality:
 
@@ -56,9 +58,7 @@ Each selected provider installs a marker under:
 Data/SKSE/Plugins/MorphSyncTogether/Providers/
 ```
 
-The new female pubic providers use the existing generic female-pubic compatibility switch internally in v0.3.2, and OPubes enables both female and male pubic compatibility. This keeps them functional with the established BodyHair capture path while the FOMOD exposes the providers independently.
-
-Tattoos, unrelated generic Body Paints and temporary OCum overlays remain excluded.
+The female pubic providers use the existing generic female-pubic compatibility switch internally, and OPubes enables both female and male pubic compatibility. Tattoos, unrelated generic Body Paints and temporary OCum overlays remain excluded.
 
 The FOMOD intentionally has **no module artwork**.
 
@@ -67,18 +67,22 @@ The FOMOD intentionally has **no module artwork**.
 Successful startup should include:
 
 ```text
-MorphSyncTogether v0.3.2 STRPM loading
+MorphSyncTogether v0.3.3 STRPM loading
 MST STRPM transport READY channel=morphsync.together.v1 ...
 Morph sync started ...
 ```
 
-Incoming traffic should produce diagnostics such as:
+A real remote morph drift still produces:
 
 ```text
-MST STRPM RX sender="..." connection=... bytes=... sequence=...
-MST MORPH APPLY ...
-MST BODYHAIR RX ...
-MST BODYHAIR APPLY ...
+MST MORPH DRIFT ... action=restore
+MST MORPH APPLY ... verified=1
+```
+
+A repeated authoritative snapshot that already matches the proxy is skipped at trace level:
+
+```text
+MST MORPH APPLY SKIP ... reason=already-authoritative
 ```
 
 ## Build
@@ -92,7 +96,7 @@ Run:
 Output:
 
 ```text
-dist/MorphSyncTogether-v0.3.2-FOMOD.zip
+dist/MorphSyncTogether-v0.3.3-FOMOD.zip
 ```
 
 The build script validates all eight provider packages, validates the FOMOD XML, verifies the archive contents, and explicitly rejects an accidentally reintroduced `fomod/ModuleImage.png`.
