@@ -2,10 +2,12 @@
 #include "MorphSyncService.h"
 
 // Compile the proven legacy service under alternate names for the packet
-// entry points replaced by the BodyHair adapter on this branch.
+// entry points and morph-apply path replaced by the adapters on this branch.
 #define HandleUdpPacket HandleUdpPacketLegacy
 #define HandlePubicPacket HandlePubicPacketLegacy
+#define TryApplyRemote TryApplyRemoteLegacy
 #include "MorphSyncService.cpp"
+#undef TryApplyRemote
 #undef HandlePubicPacket
 #undef HandleUdpPacket
 
@@ -117,5 +119,123 @@ namespace MorphSyncTogether
             hash);
 
         TryApplyRemotePubic(sender, true);
+    }
+
+    void MorphSyncService::TryApplyRemote(
+        const std::string& sender,
+        bool force)
+    {
+        RemoteSnapshot snapshot;
+        {
+            std::scoped_lock lock(_remoteMutex);
+            const auto it = _remoteSnapshots.find(sender);
+            if (it == _remoteSnapshots.end()) {
+                return;
+            }
+            snapshot = it->second;
+        }
+
+        auto* actor = ResolveRemoteProxyByName(sender);
+        if (!actor) {
+            if (force) {
+                SKSE::log::info(
+                    "MST MORPH APPLY WAIT sender=\"{}\" reason=proxy-not-found",
+                    sender);
+            }
+            return;
+        }
+
+        if (!actor->Get3D()) {
+            if (force) {
+                SKSE::log::info(
+                    "MST MORPH APPLY WAIT sender=\"{}\" actor={:08X} reason=proxy-3d-not-loaded",
+                    sender,
+                    actor->GetFormID());
+            }
+            return;
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        const auto authoritativeDataHash = HashMorphs(snapshot.values);
+        const auto liveBefore = CaptureMorphs(actor);
+        const auto liveBeforeHash = HashMorphs(liveBefore);
+        const bool drift = liveBeforeHash != authoritativeDataHash;
+
+        // STRPM can periodically resend the same authoritative snapshot. If the
+        // proxy already matches it, refresh bookkeeping only and avoid another
+        // ClearMorphs/SetMorph/ApplyBodyMorphs/UpdateModelWeight pass.
+        if (!drift) {
+            {
+                std::scoped_lock lock(_remoteMutex);
+                const auto it = _remoteSnapshots.find(sender);
+                if (it != _remoteSnapshots.end() && it->second.hash == snapshot.hash) {
+                    it->second.everApplied = true;
+                    it->second.lastActorFormID = actor->GetFormID();
+                    it->second.lastApply = now;
+                }
+            }
+
+            if (force) {
+                SKSE::log::trace(
+                    "MST MORPH APPLY SKIP sender=\"{}\" actor={:08X} values={} hash={:016X} reason=already-authoritative",
+                    sender,
+                    actor->GetFormID(),
+                    liveBefore.size(),
+                    liveBeforeHash);
+            }
+            return;
+        }
+
+        SKSE::log::info(
+            "MST MORPH DRIFT sender=\"{}\" actor={:08X} liveValues={} liveHash={:016X} authoritativeValues={} authoritativeHash={:016X} action=restore",
+            sender,
+            actor->GetFormID(),
+            liveBefore.size(),
+            liveBeforeHash,
+            snapshot.values.size(),
+            authoritativeDataHash);
+
+        if (_config.clearRemoteMorphs) {
+            _bodyMorph->ClearMorphs(actor);
+        }
+
+        for (const auto& value : snapshot.values) {
+            _bodyMorph->SetMorph(
+                actor,
+                value.morphName.c_str(),
+                value.morphKey.c_str(),
+                value.value);
+        }
+
+        _bodyMorph->ApplyBodyMorphs(actor, false);
+        _bodyMorph->UpdateModelWeight(actor, false);
+
+        const auto liveAfter = CaptureMorphs(actor);
+        const auto liveAfterHash = HashMorphs(liveAfter);
+        const bool verified = liveAfterHash == authoritativeDataHash;
+
+        {
+            std::scoped_lock lock(_remoteMutex);
+            const auto it = _remoteSnapshots.find(sender);
+            if (it != _remoteSnapshots.end() && it->second.hash == snapshot.hash) {
+                it->second.everApplied = true;
+                it->second.lastActorFormID = actor->GetFormID();
+                it->second.lastApply = now;
+            }
+        }
+
+        auto* base = actor->GetActorBase();
+        SKSE::log::info(
+            "MST MORPH APPLY sender=\"{}\" actor={:08X} base={:08X} values={} netHash={:016X} dataHash={:016X} clear={} verified={} liveAfterValues={} liveAfterHash={:016X} modelUpdateQueued=1",
+            sender,
+            actor->GetFormID(),
+            base ? base->GetFormID() : 0,
+            snapshot.values.size(),
+            snapshot.hash,
+            authoritativeDataHash,
+            _config.clearRemoteMorphs ? 1 : 0,
+            verified ? 1 : 0,
+            liveAfter.size(),
+            liveAfterHash);
     }
 }
