@@ -92,7 +92,7 @@ foreach ($Provider in $ProviderPackages) {
 Copy-Item (Join-Path $FomodSource "*") $FomodStage -Recurse -Force
 
 New-Item -ItemType Directory -Force -Path $Dist | Out-Null
-$zip = Join-Path $Dist "MorphSyncTogether-v0.3.2-FOMOD.zip"
+$zip = Join-Path $Dist "MorphSyncTogether-v0.3.3-FOMOD.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path (Join-Path $Stage "*") -DestinationPath $zip -Force
 
