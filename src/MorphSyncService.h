@@ -84,6 +84,9 @@ namespace MorphSyncTogether
             std::string_view payload);
 
         void HandleUdpPacketLegacy(std::string packet);
+        void HandleMorphPacketLegacy(
+            std::string_view sender,
+            std::string_view payload);
         void HandlePubicPacketLegacy(
             std::string_view sender,
             std::string_view payload);
