@@ -1,24 +1,30 @@
-# MorphSyncTogether v0.4.1 - STRPM transport
+# MorphSyncTogether v0.4.2 - STRPM transport
 
 MorphSyncTogether keeps remote Skyrim Together player appearance authoritative across clients.
 
-## v0.4.1
+## v0.4.2
 
-v0.4.1 keeps the TNG genital-size synchronization introduced in v0.4.0, but makes the integration explicitly optional in the installer and simplifies the release archive name.
+v0.4.2 keeps the optional TNG genital-size synchronization and adds automatic installer detection for The New Gentleman.
 
-The final archive is now:
+The final archive is:
 
 ```text
-dist/MorphSyncTogether-v0.4.1.zip
+dist/MorphSyncTogether-v0.4.2.zip
 ```
 
-It no longer includes `FOMOD` or `Vortex` in the filename.
+It does not include `FOMOD` or `Vortex` in the filename.
 
-### Optional TNG support
+### Optional TNG support with automatic detection
 
-The New Gentleman integration is not part of the required core feature set. Select **The New Gentleman (TNG) support** in the installer only if you use TNG and want genital-size synchronization.
+The New Gentleman integration remains optional. The installer now checks for:
 
-Selecting it installs:
+```text
+TheNewGentleman.esp
+```
+
+When that plugin is active, **The New Gentleman (TNG) support** is marked `Recommended`, matching the behavior used for supported BodyHairSliders overlay packs. If TNG is not detected, the option remains `Optional`.
+
+Selecting the option installs:
 
 ```text
 Data/SKSE/Plugins/MorphSyncTogether/Providers/TNG.enabled
@@ -33,6 +39,7 @@ This preserves custom TNG size settings and race multipliers instead of transmit
 ### TNG synchronization behavior
 
 - optional installer integration
+- automatically marked `Recommended` when `TheNewGentleman.esp` is active
 - enabled by `Data/SKSE/Plugins/MorphSyncTogether/Providers/TNG.enabled`
 - captures the local player's effective `GenBase` scale on Skyrim's game thread
 - sends `TNGSIZE` state through the existing `morphsync.together.v1` STRPM channel
@@ -53,7 +60,7 @@ The v0.3.4 morph resend optimization remains unchanged: repeated STRPM morph sna
 - FaceGen makeup preservation/rebind
 - BodyHairSliders / OPubes semantic overlay synchronization
 - optional The New Gentleman genital-size synchronization
-- independent installer provider/integration selection
+- automatic installer detection for supported overlay providers and TNG
 - periodic authoritative resend and remote reapply safety net
 
 ## STRPM transport
@@ -97,6 +104,8 @@ The installer mirrors the provider list used by BodyHairSliders:
 - **Natural Pubic Hairstyles** — `NaturalPubicHairstyles.esp`
 - **Natural Pubic Hairstyles - UBE** — `UBENaturalPubicHairstyles.esp`
 
+Detected providers are marked `Recommended` in the installer.
+
 Selected providers install markers under:
 
 ```text
@@ -112,7 +121,7 @@ The installer intentionally has **no module artwork**.
 Successful startup with TNG support selected should include:
 
 ```text
-MorphSyncTogether v0.4.1 STRPM loading
+MorphSyncTogether v0.4.2 STRPM loading
 MST STRPM transport READY channel=morphsync.together.v1 ...
 Morph sync started ...
 MST TNG sync started interval=1000ms resend=5000ms
@@ -157,7 +166,7 @@ Run:
 Output:
 
 ```text
-dist/MorphSyncTogether-v0.4.1.zip
+dist/MorphSyncTogether-v0.4.2.zip
 ```
 
 The build script validates the core package, all BodyHair provider packages, the optional TNG integration marker, both installer XML files and the final archive contents. It also explicitly rejects an accidentally reintroduced `fomod/ModuleImage.png`.
