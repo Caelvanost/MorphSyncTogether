@@ -1,6 +1,7 @@
 #include "PCH.h"
 
 #include "MorphSyncService.h"
+#include "TngSync.h"
 #include "UdpTransport.h"
 
 namespace
@@ -30,9 +31,11 @@ namespace
         case SKSE::MessagingInterface::kDataLoaded:
             MorphSyncTogether::UdpTransport::GetSingleton().Start();
             MorphSyncTogether::MorphSyncService::GetSingleton().Start();
+            MorphSyncTogether::TngSync::GetSingleton().Start();
             break;
         case SKSE::MessagingInterface::kPreLoadGame:
             MorphSyncTogether::MorphSyncService::GetSingleton().Reset();
+            MorphSyncTogether::TngSync::GetSingleton().Reset();
             break;
         default:
             break;
@@ -44,7 +47,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
 {
     InitLogging();
     SKSE::Init(skse);
-    SKSE::log::info("MorphSyncTogether v0.3.4 STRPM loading");
+    SKSE::log::info("MorphSyncTogether v0.4.0 STRPM loading");
 
     auto* messaging = SKSE::GetMessagingInterface();
     if (!messaging) {
