@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
     MorphSyncTogether
-    VERSION 0.3.4
+    VERSION 0.4.0
     LANGUAGES CXX
 )
 
@@ -25,6 +25,8 @@ add_commonlibsse_plugin(${PROJECT_NAME}
         src/AppearanceProbe.h
         src/MorphSyncServiceBodyHair.cpp
         src/MorphSyncService.h
+        src/TngSync.cpp
+        src/TngSync.h
 )
 
 target_precompile_headers(${PROJECT_NAME}
