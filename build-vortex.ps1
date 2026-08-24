@@ -21,7 +21,8 @@ $ProviderPackages = @(
     @{ Stage = "50 More Pubes for SlaveTats"; Root = "optional\MorePubesSlaveTats\package"; Marker = "MorePubesSlaveTats.enabled" },
     @{ Stage = "60 Nordic Warmaiden"; Root = "optional\NordicWarmaiden\package"; Marker = "NordicWarmaiden.enabled" },
     @{ Stage = "70 HIMBO Bodyhair"; Root = "optional\HIMBOBodyhair\package"; Marker = "HIMBOBodyhair.enabled" },
-    @{ Stage = "80 OPubes NG"; Root = "optional\OPubes\package"; Marker = "OPubes.enabled" }
+    @{ Stage = "80 OPubes NG"; Root = "optional\OPubes\package"; Marker = "OPubes.enabled" },
+    @{ Stage = "90 The New Gentleman"; Root = "optional\TNG\package"; Marker = "TNG.enabled" }
 )
 
 if (-not $VcpkgRoot) { throw "VCPKG_ROOT n'est pas defini." }
@@ -92,7 +93,7 @@ foreach ($Provider in $ProviderPackages) {
 Copy-Item (Join-Path $FomodSource "*") $FomodStage -Recurse -Force
 
 New-Item -ItemType Directory -Force -Path $Dist | Out-Null
-$zip = Join-Path $Dist "MorphSyncTogether-v0.3.4-FOMOD.zip"
+$zip = Join-Path $Dist "MorphSyncTogether-v0.4.0-FOMOD.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path (Join-Path $Stage "*") -DestinationPath $zip -Force
 
