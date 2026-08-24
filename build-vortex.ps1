@@ -93,7 +93,7 @@ foreach ($Provider in $ProviderPackages) {
 Copy-Item (Join-Path $FomodSource "*") $FomodStage -Recurse -Force
 
 New-Item -ItemType Directory -Force -Path $Dist | Out-Null
-$zip = Join-Path $Dist "MorphSyncTogether-v0.4.0-FOMOD.zip"
+$zip = Join-Path $Dist "MorphSyncTogether-v0.4.1.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path (Join-Path $Stage "*") -DestinationPath $zip -Force
 
@@ -119,5 +119,5 @@ try {
 }
 
 Write-Host ""
-Write-Host "OK - package FOMOD cree et verifie :" -ForegroundColor Green
+Write-Host "OK - package cree et verifie :" -ForegroundColor Green
 Write-Host $zip
