@@ -1,5 +1,6 @@
 #include "PCH.h"
 #include "MorphSyncService.h"
+#include "TngSync.h"
 
 // Compile the proven legacy service under alternate names for the packet
 // entry points and morph-apply path replaced by the adapters on this branch.
@@ -25,6 +26,12 @@ namespace MorphSyncTogether
         const auto sender = ReadField(packet, "from");
         if (!sender || sender->empty()) {
             SKSE::log::warn("MST RX packet missing sender");
+            return;
+        }
+
+        const auto tngPos = packet.find("|TNGSIZE|");
+        if (tngPos != std::string::npos) {
+            TngSync::GetSingleton().HandlePacket(*sender, std::string_view(packet).substr(tngPos + 1));
             return;
         }
 
