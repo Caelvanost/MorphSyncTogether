@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://qconsulting.ca/fo3/ModConfig5.0.xsd">
-  <moduleName>MorphSyncTogether 0.4.0</moduleName>
+  <moduleName>MorphSyncTogether 0.4.1</moduleName>
   <requiredInstallFiles>
     <folder source="00 Core" destination="" priority="0" />
   </requiredInstallFiles>
@@ -23,9 +23,9 @@
     </installStep>
     <installStep name="Optional appearance integrations">
       <optionalFileGroups order="Explicit">
-        <group name="Select the integrations you have installed" type="SelectAny">
+        <group name="Optional integrations" type="SelectAny">
           <plugins order="Explicit">
-            <plugin name="The New Gentleman (TNG)"><description>Synchronizes the effective TNG genital scale between Skyrim Together players, including TNG's compensating scrotum scale.</description><files><folder source="90 The New Gentleman" destination="" priority="90" /></files><typeDescriptor><dependencyType><defaultType name="Optional" /><patterns><pattern><dependencies operator="And"><fileDependency file="TheNewGentleman.esp" state="Active" /></dependencies><type name="Recommended" /></pattern></patterns></dependencyType></typeDescriptor></plugin>
+            <plugin name="The New Gentleman (TNG) support"><description>Optional. Select this only if you use The New Gentleman and want MorphSyncTogether to synchronize the effective TNG genital scale between clients.</description><files><folder source="90 The New Gentleman" destination="" priority="90" /></files><typeDescriptor><type name="Optional" /></typeDescriptor></plugin>
           </plugins>
         </group>
       </optionalFileGroups>
