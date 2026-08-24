@@ -1,18 +1,38 @@
-# MorphSyncTogether v0.4.0 - STRPM transport
+# MorphSyncTogether v0.4.1 - STRPM transport
 
 MorphSyncTogether keeps remote Skyrim Together player appearance authoritative across clients.
 
-## v0.4.0
+## v0.4.1
 
-MorphSyncTogether now optionally synchronizes **The New Gentleman (TNG) genital size** in addition to RaceMenu BodyMorphs, FaceGen makeup and supported BodyHairSliders overlays.
+v0.4.1 keeps the TNG genital-size synchronization introduced in v0.4.0, but makes the integration explicitly optional in the installer and simplifies the release archive name.
 
-TNG does not represent genital size as a normal RaceMenu BodyMorph. Its current implementation scales the live skeleton node `NPC GenitalsBase [GenBase]` and compensates `NPC GenitalsScrotum [GenScrot]` with `1 / sqrt(scale)`. MorphSyncTogether therefore captures the player's **effective live TNG scale**, sends it through STRPluginMessagingAPI, and applies the same effective scale to the corresponding remote STR proxy.
+The final archive is now:
+
+```text
+dist/MorphSyncTogether-v0.4.1.zip
+```
+
+It no longer includes `FOMOD` or `Vortex` in the filename.
+
+### Optional TNG support
+
+The New Gentleman integration is not part of the required core feature set. Select **The New Gentleman (TNG) support** in the installer only if you use TNG and want genital-size synchronization.
+
+Selecting it installs:
+
+```text
+Data/SKSE/Plugins/MorphSyncTogether/Providers/TNG.enabled
+```
+
+Without that marker, the TNG synchronization module remains disabled.
+
+TNG does not represent genital size as a normal RaceMenu BodyMorph. Its current implementation scales the live skeleton node `NPC GenitalsBase [GenBase]` and compensates `NPC GenitalsScrotum [GenScrot]` with `1 / sqrt(scale)`. MorphSyncTogether captures the player's effective live TNG scale, sends it through STRPluginMessagingAPI, and applies the same scale to the corresponding remote STR proxy.
 
 This preserves custom TNG size settings and race multipliers instead of transmitting only the XS/S/M/L/XL category.
 
 ### TNG synchronization behavior
 
-- optional FOMOD integration, detected through `TheNewGentleman.esp`
+- optional installer integration
 - enabled by `Data/SKSE/Plugins/MorphSyncTogether/Providers/TNG.enabled`
 - captures the local player's effective `GenBase` scale on Skyrim's game thread
 - sends `TNGSIZE` state through the existing `morphsync.together.v1` STRPM channel
@@ -24,7 +44,7 @@ This preserves custom TNG size settings and race multipliers instead of transmit
 - skips node writes when the proxy already matches the authoritative scale
 - retries automatically when the STR proxy or TNG skeleton nodes are not yet loaded
 
-The existing v0.3.4 morph resend optimization remains unchanged: repeated STRPM morph snapshots are compared against the live proxy and expensive RaceMenu rebuilds are skipped when the proxy already matches.
+The v0.3.4 morph resend optimization remains unchanged: repeated STRPM morph snapshots are compared against the live proxy and expensive RaceMenu rebuilds are skipped when the proxy already matches.
 
 ## Features
 
@@ -33,7 +53,7 @@ The existing v0.3.4 morph resend optimization remains unchanged: repeated STRPM 
 - FaceGen makeup preservation/rebind
 - BodyHairSliders / OPubes semantic overlay synchronization
 - optional The New Gentleman genital-size synchronization
-- independent FOMOD provider/integration selection
+- independent installer provider/integration selection
 - periodic authoritative resend and remote reapply safety net
 
 ## STRPM transport
@@ -64,11 +84,9 @@ Optional integrations:
 - OPubes
 - **The New Gentleman (TNG)**
 
-For TNG size synchronization, install TNG on the relevant clients and select **The New Gentleman (TNG)** in the MorphSyncTogether FOMOD. Detected installations are marked `Recommended`.
-
 ## BodyHairSliders providers
 
-The FOMOD mirrors the provider list and detection used by BodyHairSliders:
+The installer mirrors the provider list used by BodyHairSliders:
 
 - **Nordic Warmaiden Body Hair** — `Nordic Warmaiden Body Hair.esp`
 - **HIMBO V3 Bodyhair Overlays for Racemenu** — `HIMBOBodyhairOverlay.esp`
@@ -87,14 +105,14 @@ Data/SKSE/Plugins/MorphSyncTogether/Providers/
 
 Tattoos, unrelated generic Body Paints and temporary OCum overlays remain excluded.
 
-The FOMOD intentionally has **no module artwork**.
+The installer intentionally has **no module artwork**.
 
 ## Expected log
 
-Successful startup with TNG selected should include:
+Successful startup with TNG support selected should include:
 
 ```text
-MorphSyncTogether v0.4.0 STRPM loading
+MorphSyncTogether v0.4.1 STRPM loading
 MST STRPM transport READY channel=morphsync.together.v1 ...
 Morph sync started ...
 MST TNG sync started interval=1000ms resend=5000ms
@@ -139,7 +157,7 @@ Run:
 Output:
 
 ```text
-dist/MorphSyncTogether-v0.4.0-FOMOD.zip
+dist/MorphSyncTogether-v0.4.1.zip
 ```
 
-The build script validates the core package, all BodyHair provider packages, the TNG integration marker, both FOMOD XML files and the final archive contents. It also explicitly rejects an accidentally reintroduced `fomod/ModuleImage.png`.
+The build script validates the core package, all BodyHair provider packages, the optional TNG integration marker, both installer XML files and the final archive contents. It also explicitly rejects an accidentally reintroduced `fomod/ModuleImage.png`.
