@@ -112,6 +112,21 @@ namespace MorphSyncTogether
         cfg.clearRemoteMorphs = ReadBool(
             L"MorphSync", L"ClearRemoteMorphs", cfg.clearRemoteMorphs);
 
+        cfg.skeletonSyncEnabled = ReadBool(
+            L"SkeletonSync", L"Enabled", cfg.skeletonSyncEnabled);
+        cfg.skeletonSyncActorScale = ReadBool(
+            L"SkeletonSync", L"SyncActorScale", cfg.skeletonSyncActorScale);
+        cfg.skeletonSyncNiTransforms = ReadBool(
+            L"SkeletonSync", L"SyncNiTransforms", cfg.skeletonSyncNiTransforms);
+        cfg.skeletonSyncIntervalMs = Clamp(
+            static_cast<std::uint32_t>(GetPrivateProfileIntW(
+                L"SkeletonSync", L"IntervalMs", cfg.skeletonSyncIntervalMs, kIniPath)),
+            250, 10000);
+        cfg.skeletonFullResendMs = Clamp(
+            static_cast<std::uint32_t>(GetPrivateProfileIntW(
+                L"SkeletonSync", L"FullResendMs", cfg.skeletonFullResendMs, kIniPath)),
+            1000, 60000);
+
         cfg.pubicOverlaySyncEnabled = ReadBool(
             L"PubicOverlaySync", L"Enabled", cfg.pubicOverlaySyncEnabled);
 
