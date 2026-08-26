@@ -29,10 +29,8 @@ namespace MorphSyncTogether
 
         // v0.5.0 development: synchronize height/reference scale and persistent
         // RaceMenu NiTransform overrides on a filtered set of anatomical nodes.
-        // Kept independently switchable while XPMSSE/RBM Redux support is tested.
+        // This master switch makes it easy to disable the experimental layer.
         bool skeletonSyncEnabled{ true };
-        bool skeletonSyncActorScale{ true };
-        bool skeletonSyncNiTransforms{ true };
         std::uint32_t skeletonSyncIntervalMs{ 1000 };
         std::uint32_t skeletonFullResendMs{ 5000 };
 
