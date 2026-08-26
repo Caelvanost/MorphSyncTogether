@@ -27,6 +27,15 @@ namespace MorphSyncTogether
 
         bool clearRemoteMorphs{ true };
 
+        // v0.5.0 development: synchronize height/reference scale and persistent
+        // RaceMenu NiTransform overrides on a filtered set of anatomical nodes.
+        // Kept independently switchable while XPMSSE/RBM Redux support is tested.
+        bool skeletonSyncEnabled{ true };
+        bool skeletonSyncActorScale{ true };
+        bool skeletonSyncNiTransforms{ true };
+        std::uint32_t skeletonSyncIntervalMs{ 1000 };
+        std::uint32_t skeletonFullResendMs{ 5000 };
+
         // Synchronize only OPubes/OPubesRaceMenuSelector textures stored in
         // RaceMenu Body [Ovl#] nodes. Other body overlays remain local.
         bool pubicOverlaySyncEnabled{ true };
