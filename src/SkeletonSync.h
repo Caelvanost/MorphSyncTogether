@@ -19,7 +19,8 @@ namespace MorphSyncTogether
         // Must run on Skyrim's game thread.
         void HandlePacket(std::string_view sender, std::string_view payload);
 
-    private:
+        // Public only so the ABI visitor implementation in SkeletonSync.cpp can
+        // build filtered snapshots without exposing RaceMenu internals elsewhere.
         struct TransformState
         {
             std::string node;
@@ -34,6 +35,9 @@ namespace MorphSyncTogether
             std::uint32_t scaleMode{ 0 };
         };
 
+        static bool IsSafeBodyNode(std::string_view node);
+
+    private:
         struct Snapshot
         {
             float actorScale{ 1.0F };
@@ -69,7 +73,6 @@ namespace MorphSyncTogether
         bool ApplySnapshot(RE::Actor* actor, RemoteState& state, bool& changed);
         bool SnapshotMatches(RE::Actor* actor, const Snapshot& snapshot) const;
 
-        static bool IsSafeBodyNode(std::string_view node);
         static bool NearlyEqual(float lhs, float rhs, float epsilon = 0.0001F);
         static std::uint64_t HashSnapshot(const Snapshot& snapshot);
         static std::string SerializeTransforms(const Snapshot& snapshot);
