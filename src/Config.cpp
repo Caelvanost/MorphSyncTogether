@@ -114,10 +114,6 @@ namespace MorphSyncTogether
 
         cfg.skeletonSyncEnabled = ReadBool(
             L"SkeletonSync", L"Enabled", cfg.skeletonSyncEnabled);
-        cfg.skeletonSyncActorScale = ReadBool(
-            L"SkeletonSync", L"SyncActorScale", cfg.skeletonSyncActorScale);
-        cfg.skeletonSyncNiTransforms = ReadBool(
-            L"SkeletonSync", L"SyncNiTransforms", cfg.skeletonSyncNiTransforms);
         cfg.skeletonSyncIntervalMs = Clamp(
             static_cast<std::uint32_t>(GetPrivateProfileIntW(
                 L"SkeletonSync", L"IntervalMs", cfg.skeletonSyncIntervalMs, kIniPath)),
