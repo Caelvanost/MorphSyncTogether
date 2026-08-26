@@ -1,77 +1,119 @@
-# MorphSyncTogether v0.4.2 - STRPM transport
+# MorphSyncTogether v0.5.0 - development branch
 
-MorphSyncTogether keeps remote Skyrim Together player appearance authoritative across clients.
+MorphSyncTogether keeps remote Skyrim Together player appearance authoritative across clients through STRPluginMessagingAPI (STRPM).
 
-## v0.4.2
+> `dev` is the active development branch for v0.5.0. The stable release remains on `main` until the new skeleton/height synchronization layer has been validated on two clients.
 
-v0.4.2 keeps the optional TNG genital-size synchronization and adds automatic installer detection for The New Gentleman.
+## v0.5.0 development goal
 
-The final archive is:
+v0.5.0 extends MorphSyncTogether beyond RaceMenu BodyMorphs with an experimental **Skeleton Transform Sync** layer intended for character height and persistent XPMSSE/RaceMenu body-proportion overrides.
+
+The existing BodyMorph synchronization already covers CBBE/3BA, HIMBO, OBody and other RaceMenu BodyMorph values. The new layer targets appearance data that is not represented as a BodyMorph:
+
+- actor/reference scale used for character-height changes
+- persistent RaceMenu `NiTransform` position overrides
+- persistent RaceMenu `NiTransform` rotation overrides
+- persistent RaceMenu `NiTransform` scale overrides
+- RaceMenu scale-mode values when exposed correctly by the installed RaceMenu build
+
+### Dedicated STRPM transport
+
+The experimental layer uses a separate channel:
 
 ```text
-dist/MorphSyncTogether-v0.4.2.zip
+morphsync.skeleton.v1
 ```
 
-It does not include `FOMOD` or `Vortex` in the filename.
+This intentionally leaves the proven appearance channel untouched:
 
-### Optional TNG support with automatic detection
+```text
+morphsync.together.v1
+```
 
-The New Gentleman integration remains optional. The installer now checks for:
+The skeleton channel uses STRPM reliable + ordered delivery and STRPM ProxyResolver for ConnectionID -> remote STR proxy resolution.
+
+## XPMSSE safety filtering
+
+MorphSyncTogether does **not** copy arbitrary live skeleton transforms. Animation systems continuously modify bone transforms, so treating the whole live skeleton as authoritative would cause animation fights and visual corruption.
+
+v0.5.0 only synchronizes persistent RaceMenu NiTransform overrides on a filtered set of anatomical nodes. Examples include:
+
+- pelvis
+- spine
+- neck/head
+- clavicles
+- upper arms / forearms / hands
+- thighs / calves / feet / toes
+- body / belly / breast / butt nodes
+- RaceMenu `CME Body` / `CME LBody`
+- root/body nodes used by persistent height/proportion overrides
+
+Weapon-placement and camera-related XPMSSE nodes are explicitly excluded, including weapon, sword, dagger, axe, mace, bow, quiver, shield, staff, scabbard, arrow/bolt and camera families.
+
+This is intended to synchronize body proportions without overwriting each player's local weapon-placement configuration.
+
+## RaceMenu API safety
+
+The implementation consumes RaceMenu's public `NiTransform` interface and captures transforms through `VisitNodes`.
+
+The current RaceMenu source contains unsafe/inconsistent behavior in some `HasNodeTransform*` helpers, including a `HasNodeTransformScale` implementation that calls a removal path. MorphSyncTogether therefore does **not** use those helpers for drift checks. It captures non-destructive `VisitNodes` snapshots and compares them before applying changes.
+
+## Current Racial Body Morphs Redux scope
+
+This development work is motivated in part by **Racial Body Morphs Redux SSE AE (FKDRS)** and similar XPMSSE-based setups.
+
+The current v0.5.0 prototype can synchronize:
+
+- BodyMorph portions already handled by MorphSyncTogether
+- actor/reference scale when a height mod changes the actor scale
+- persistent RaceMenu NiTransform overrides on supported anatomical nodes
+
+It does **not yet guarantee reproduction of race-specific base skeleton NIF geometry/transforms** that exist only in different skeleton files and are not exposed as actor scale or RaceMenu NiTransforms. That is the next research step after the first v0.5.0 two-client validation.
+
+## SkeletonSync configuration
+
+`Data/SKSE/Plugins/MorphSyncTogether.ini`:
+
+```ini
+[SkeletonSync]
+Enabled=1
+IntervalMs=1000
+FullResendMs=5000
+```
+
+Set:
+
+```ini
+Enabled=0
+```
+
+if the experimental layer causes a compatibility issue. This disables only SkeletonSync; normal BodyMorph, BodyHair, FaceGen and optional TNG synchronization remain available.
+
+## Existing features preserved
+
+- RaceMenu BodyMorph synchronization
+- owner-authoritative OBody drift correction/reapplication
+- FaceGen makeup preservation/rebind
+- BodyHairSliders / OPubes semantic overlay synchronization
+- optional The New Gentleman genital-size synchronization
+- automatic installer detection for supported BodyHair providers and TNG
+- periodic authoritative resend and remote drift recovery
+
+### Optional TNG support
+
+The installer detects:
 
 ```text
 TheNewGentleman.esp
 ```
 
-When that plugin is active, **The New Gentleman (TNG) support** is marked `Recommended`, matching the behavior used for supported BodyHairSliders overlay packs. If TNG is not detected, the option remains `Optional`.
-
-Selecting the option installs:
+and marks **The New Gentleman (TNG) support** as `Recommended` when present. Selecting it installs:
 
 ```text
 Data/SKSE/Plugins/MorphSyncTogether/Providers/TNG.enabled
 ```
 
-Without that marker, the TNG synchronization module remains disabled.
-
-TNG does not represent genital size as a normal RaceMenu BodyMorph. Its current implementation scales the live skeleton node `NPC GenitalsBase [GenBase]` and compensates `NPC GenitalsScrotum [GenScrot]` with `1 / sqrt(scale)`. MorphSyncTogether captures the player's effective live TNG scale, sends it through STRPluginMessagingAPI, and applies the same scale to the corresponding remote STR proxy.
-
-This preserves custom TNG size settings and race multipliers instead of transmitting only the XS/S/M/L/XL category.
-
-### TNG synchronization behavior
-
-- optional installer integration
-- automatically marked `Recommended` when `TheNewGentleman.esp` is active
-- enabled by `Data/SKSE/Plugins/MorphSyncTogether/Providers/TNG.enabled`
-- captures the local player's effective `GenBase` scale on Skyrim's game thread
-- sends `TNGSIZE` state through the existing `morphsync.together.v1` STRPM channel
-- resolves the remote actor through STRPM ProxyResolver
-- applies `GenBase = scale`
-- applies `GenScrot = 1 / sqrt(scale)`, matching TNG's own scaling behavior
-- checks once per second for remote drift
-- resends the authoritative scale every 5 seconds
-- skips node writes when the proxy already matches the authoritative scale
-- retries automatically when the STR proxy or TNG skeleton nodes are not yet loaded
-
-The v0.3.4 morph resend optimization remains unchanged: repeated STRPM morph snapshots are compared against the live proxy and expensive RaceMenu rebuilds are skipped when the proxy already matches.
-
-## Features
-
-- RaceMenu BodyMorph synchronization
-- OBody drift correction/reapplication
-- FaceGen makeup preservation/rebind
-- BodyHairSliders / OPubes semantic overlay synchronization
-- optional The New Gentleman genital-size synchronization
-- automatic installer detection for supported overlay providers and TNG
-- periodic authoritative resend and remote reapply safety net
-
-## STRPM transport
-
-- channel: `morphsync.together.v1`
-- target: all connected STR players
-- flags: reliable + ordered
-- sender identity comes from authenticated STRPM message metadata
-- callbacks are queued onto the SKSE game thread before MorphSync processes them
-- STRPM ProxyResolver is used for remote-player proxy resolution
-- MorphSyncTogether does not open or discover LAN UDP peers
+TNG synchronization sends the effective `NPC GenitalsBase [GenBase]` scale and applies TNG's corresponding `GenScrot = 1 / sqrt(scale)` compensation on the remote proxy.
 
 ## Requirements
 
@@ -79,94 +121,59 @@ The v0.3.4 morph resend optimization remains unchanged: repeated STRPM morph sna
 - SKSE64
 - RaceMenu
 - Address Library for SKSE Plugins
-- **STRPluginMessagingAPI v0.8.2 or newer compatible API/ProxyResolver**
-- the STRPM server relay required by your STRPluginMessagingAPI installation
-- the same MorphSyncTogether version on all clients
+- STRPluginMessagingAPI v0.8.2 or newer compatible messaging API / ProxyResolver
+- the same MorphSyncTogether version on both clients
 
-Optional integrations:
+Optional integrations include OBody/OBody NG, OStim, BodyHairSliders, OPubes and The New Gentleman.
 
-- OBody / OBody NG
-- OStim
-- BodyHairSliders
-- OPubes
-- **The New Gentleman (TNG)**
+## Expected v0.5.0 logs
 
-## BodyHairSliders providers
-
-The installer mirrors the provider list used by BodyHairSliders:
-
-- **Nordic Warmaiden Body Hair** — `Nordic Warmaiden Body Hair.esp`
-- **HIMBO V3 Bodyhair Overlays for Racemenu** — `HIMBOBodyhairOverlay.esp`
-- **Pubes Forever Female / Pubic Hairstyles All In One CBBE** — `AK_RM_PubicStyles_All_In_One.esp`
-- **Pubes Forever Male** — `AK_RM_PubicStyles_All_In_One_M.esp`
-- **OPubes NG compatibility** — `OPubes.esp`
-- **More Pubes for SlaveTats** — detected through `textures/actors/character/slavetats/ZckeZckTPubicHair/ZckeZcktPubic00Heart.dds`
-- **Natural Pubic Hairstyles** — `NaturalPubicHairstyles.esp`
-- **Natural Pubic Hairstyles - UBE** — `UBENaturalPubicHairstyles.esp`
-
-Detected providers are marked `Recommended` in the installer.
-
-Selected providers install markers under:
+Startup:
 
 ```text
-Data/SKSE/Plugins/MorphSyncTogether/Providers/
-```
-
-Tattoos, unrelated generic Body Paints and temporary OCum overlays remain excluded.
-
-The installer intentionally has **no module artwork**.
-
-## Expected log
-
-Successful startup with TNG support selected should include:
-
-```text
-MorphSyncTogether v0.4.2 STRPM loading
+MorphSyncTogether v0.5.0 STRPM loading
 MST STRPM transport READY channel=morphsync.together.v1 ...
-Morph sync started ...
-MST TNG sync started interval=1000ms resend=5000ms
+MST SkeletonSync NiTransform interface READY version=3
+MST SkeletonSync STRPM READY channel=morphsync.skeleton.v1 messaging=v2 resolver=v1
+MST SkeletonSync started interval=1000ms resend=5000ms actorScale=1 niTransform=1 maxTransforms=64
 ```
 
-Local TNG state:
+Local capture / transport:
 
 ```text
-MST TNG TX player=... name="..." scale=... changed=... resend=...
+MST SKEL CAPTURE actor=... scale=... transforms=... filtered=... truncated=... hash=...
+MST SKEL TX player=... scale=... transforms=... hash=...
 ```
 
-Remote TNG state:
+Remote application:
 
 ```text
-MST TNG RX sender="..." scale=... repeated=...
-MST TNG DRIFT ... action=restore
-MST TNG APPLY ... verified=1
+MST SKEL STRPM RX sender="..." ...
+MST SKEL RX sender="..." scale=... transforms=... hash=...
+MST SKEL APPLY sender="..." actor=... changed=1 verified=1
 ```
 
-When the remote TNG scale already matches:
+Already-authoritative state:
 
 ```text
-MST TNG APPLY SKIP ... reason=already-authoritative
+MST SKEL APPLY SKIP ... reason=already-authoritative
 ```
 
-Existing morph diagnostics remain available:
-
-```text
-MST MORPH DRIFT ... action=restore
-MST MORPH APPLY ... verified=1
-MST MORPH APPLY SKIP ... reason=already-authoritative
-```
+Existing morph/TNG diagnostics remain unchanged.
 
 ## Build
 
-Run:
+On the `dev` branch:
 
 ```powershell
+git pull
 .\build-vortex.ps1
 ```
 
 Output:
 
 ```text
-dist/MorphSyncTogether-v0.4.2.zip
+dist/MorphSyncTogether-v0.5.0.zip
 ```
 
-The build script validates the core package, all BodyHair provider packages, the optional TNG integration marker, both installer XML files and the final archive contents. It also explicitly rejects an accidentally reintroduced `fomod/ModuleImage.png`.
+The build script retains the existing FOMOD/provider validation and archive checks.
