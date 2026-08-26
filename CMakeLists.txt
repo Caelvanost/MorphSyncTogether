@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
     MorphSyncTogether
-    VERSION 0.4.2
+    VERSION 0.5.0
     LANGUAGES CXX
 )
 
@@ -21,12 +21,15 @@ add_commonlibsse_plugin(${PROJECT_NAME}
         src/UdpTransport.h
         src/STRPMCompat.h
         src/SkeeInterfaces.h
+        src/SkeeNiTransformInterface.h
         src/AppearanceProbeBodyHair.cpp
         src/AppearanceProbe.h
         src/MorphSyncServiceBodyHair.cpp
         src/MorphSyncService.h
         src/TngSync.cpp
         src/TngSync.h
+        src/SkeletonSync.cpp
+        src/SkeletonSync.h
 )
 
 target_precompile_headers(${PROJECT_NAME}
