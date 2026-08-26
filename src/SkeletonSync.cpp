@@ -476,9 +476,7 @@ namespace MorphSyncTogether
             _senderConnections[sender] = message.sender.connectionID;
         }
 
-        const std::string payload(
-            static_cast<const char*>(message.data),
-            message.size);
+        const std::string payload(static_cast<const char*>(message.data), message.size);
         if (!std::string_view(payload).starts_with("SKEL|")) {
             return;
         }
@@ -672,12 +670,16 @@ namespace MorphSyncTogether
         auto* base = actor->GetActorBase();
         const bool female = base && base->GetSex() == RE::SEXES::kFemale;
         const bool actorChanged = state.lastActorFormID != 0 && state.lastActorFormID != actor->GetFormID();
+        const auto liveSnapshot = CaptureSnapshot(actor);
+        if (!liveSnapshot) {
+            return false;
+        }
 
-        if (!NearlyEqual(actor->GetScale(), state.snapshot.actorScale)) {
+        if (!NearlyEqual(liveSnapshot->actorScale, state.snapshot.actorScale)) {
             SKSE::log::info(
                 "MST SKEL DRIFT actor={:08X} component=actor-scale live={:.6f} authoritative={:.6f} action=restore",
                 actor->GetFormID(),
-                actor->GetScale(),
+                liveSnapshot->actorScale,
                 state.snapshot.actorScale);
             actor->SetScale(state.snapshot.actorScale);
             changed = true;
@@ -697,46 +699,40 @@ namespace MorphSyncTogether
 
         state.appliedKeys.clear();
         for (const auto& value : state.snapshot.transforms) {
+            const auto liveIt = std::find_if(liveSnapshot->transforms.begin(), liveSnapshot->transforms.end(), [&](const auto& live) {
+                return live.node == value.node && live.key == value.key;
+            });
+            const TransformState* live = liveIt == liveSnapshot->transforms.end() ? nullptr : &*liveIt;
             bool entryChanged = false;
-            if (value.hasPosition) {
-                const bool has = _niTransform->HasNodeTransformPosition(actor, false, female, value.node.c_str(), value.key.c_str());
-                const auto live = has ?
-                    _niTransform->GetNodeTransformPosition(actor, false, female, value.node.c_str(), value.key.c_str()) :
-                    SKEE::INiTransformInterface::Position{};
-                if (!has || !NearlyEqual(live.x, value.position.x) || !NearlyEqual(live.y, value.position.y) || !NearlyEqual(live.z, value.position.z)) {
-                    auto position = value.position;
-                    _niTransform->AddNodeTransformPosition(actor, false, female, value.node.c_str(), value.key.c_str(), position);
-                    entryChanged = true;
-                }
+
+            if (value.hasPosition &&
+                (!live || !live->hasPosition ||
+                 !NearlyEqual(live->position.x, value.position.x) ||
+                 !NearlyEqual(live->position.y, value.position.y) ||
+                 !NearlyEqual(live->position.z, value.position.z))) {
+                auto position = value.position;
+                _niTransform->AddNodeTransformPosition(actor, false, female, value.node.c_str(), value.key.c_str(), position);
+                entryChanged = true;
             }
-            if (value.hasRotation) {
-                const bool has = _niTransform->HasNodeTransformRotation(actor, false, female, value.node.c_str(), value.key.c_str());
-                const auto live = has ?
-                    _niTransform->GetNodeTransformRotation(actor, false, female, value.node.c_str(), value.key.c_str()) :
-                    SKEE::INiTransformInterface::Rotation{};
-                if (!has || !NearlyEqual(live.heading, value.rotation.heading) || !NearlyEqual(live.attitude, value.rotation.attitude) || !NearlyEqual(live.bank, value.rotation.bank)) {
-                    auto rotation = value.rotation;
-                    _niTransform->AddNodeTransformRotation(actor, false, female, value.node.c_str(), value.key.c_str(), rotation);
-                    entryChanged = true;
-                }
+
+            if (value.hasRotation &&
+                (!live || !live->hasRotation ||
+                 !NearlyEqual(live->rotation.heading, value.rotation.heading) ||
+                 !NearlyEqual(live->rotation.attitude, value.rotation.attitude) ||
+                 !NearlyEqual(live->rotation.bank, value.rotation.bank))) {
+                auto rotation = value.rotation;
+                _niTransform->AddNodeTransformRotation(actor, false, female, value.node.c_str(), value.key.c_str(), rotation);
+                entryChanged = true;
             }
-            if (value.hasScale) {
-                const bool has = _niTransform->HasNodeTransformScale(actor, false, female, value.node.c_str(), value.key.c_str());
-                const float live = has ?
-                    _niTransform->GetNodeTransformScale(actor, false, female, value.node.c_str(), value.key.c_str()) : 1.0F;
-                if (!has || !NearlyEqual(live, value.scale)) {
-                    _niTransform->AddNodeTransformScale(actor, false, female, value.node.c_str(), value.key.c_str(), value.scale);
-                    entryChanged = true;
-                }
+
+            if (value.hasScale && (!live || !live->hasScale || !NearlyEqual(live->scale, value.scale))) {
+                _niTransform->AddNodeTransformScale(actor, false, female, value.node.c_str(), value.key.c_str(), value.scale);
+                entryChanged = true;
             }
-            if (value.hasScaleMode) {
-                const bool has = _niTransform->HasNodeTransformScaleMode(actor, false, female, value.node.c_str(), value.key.c_str());
-                const auto live = has ?
-                    _niTransform->GetNodeTransformScaleMode(actor, false, female, value.node.c_str(), value.key.c_str()) : 0U;
-                if (!has || live != value.scaleMode) {
-                    _niTransform->AddNodeTransformScaleMode(actor, false, female, value.node.c_str(), value.key.c_str(), value.scaleMode);
-                    entryChanged = true;
-                }
+
+            if (value.hasScaleMode && (!live || !live->hasScaleMode || live->scaleMode != value.scaleMode)) {
+                _niTransform->AddNodeTransformScaleMode(actor, false, female, value.node.c_str(), value.key.c_str(), value.scaleMode);
+                entryChanged = true;
             }
 
             state.appliedKeys.push_back(AppliedKey{ value.node, value.key });
@@ -751,42 +747,38 @@ namespace MorphSyncTogether
 
     bool SkeletonSync::SnapshotMatches(RE::Actor* actor, const Snapshot& snapshot) const
     {
-        if (!actor || !_niTransform || !NearlyEqual(actor->GetScale(), snapshot.actorScale)) {
+        const auto live = CaptureSnapshot(actor);
+        if (!live || !NearlyEqual(live->actorScale, snapshot.actorScale)) {
             return false;
         }
 
-        auto* base = actor->GetActorBase();
-        const bool female = base && base->GetSex() == RE::SEXES::kFemale;
-        for (const auto& value : snapshot.transforms) {
-            if (value.hasPosition) {
-                if (!_niTransform->HasNodeTransformPosition(actor, false, female, value.node.c_str(), value.key.c_str())) {
-                    return false;
-                }
-                const auto live = _niTransform->GetNodeTransformPosition(actor, false, female, value.node.c_str(), value.key.c_str());
-                if (!NearlyEqual(live.x, value.position.x) || !NearlyEqual(live.y, value.position.y) || !NearlyEqual(live.z, value.position.z)) {
-                    return false;
-                }
+        for (const auto& expected : snapshot.transforms) {
+            const auto it = std::find_if(live->transforms.begin(), live->transforms.end(), [&](const auto& value) {
+                return value.node == expected.node && value.key == expected.key;
+            });
+            if (it == live->transforms.end()) {
+                return false;
             }
-            if (value.hasRotation) {
-                if (!_niTransform->HasNodeTransformRotation(actor, false, female, value.node.c_str(), value.key.c_str())) {
-                    return false;
-                }
-                const auto live = _niTransform->GetNodeTransformRotation(actor, false, female, value.node.c_str(), value.key.c_str());
-                if (!NearlyEqual(live.heading, value.rotation.heading) || !NearlyEqual(live.attitude, value.rotation.attitude) || !NearlyEqual(live.bank, value.rotation.bank)) {
-                    return false;
-                }
+
+            if (expected.hasPosition &&
+                (!it->hasPosition ||
+                 !NearlyEqual(it->position.x, expected.position.x) ||
+                 !NearlyEqual(it->position.y, expected.position.y) ||
+                 !NearlyEqual(it->position.z, expected.position.z))) {
+                return false;
             }
-            if (value.hasScale) {
-                if (!_niTransform->HasNodeTransformScale(actor, false, female, value.node.c_str(), value.key.c_str()) ||
-                    !NearlyEqual(_niTransform->GetNodeTransformScale(actor, false, female, value.node.c_str(), value.key.c_str()), value.scale)) {
-                    return false;
-                }
+            if (expected.hasRotation &&
+                (!it->hasRotation ||
+                 !NearlyEqual(it->rotation.heading, expected.rotation.heading) ||
+                 !NearlyEqual(it->rotation.attitude, expected.rotation.attitude) ||
+                 !NearlyEqual(it->rotation.bank, expected.rotation.bank))) {
+                return false;
             }
-            if (value.hasScaleMode) {
-                if (!_niTransform->HasNodeTransformScaleMode(actor, false, female, value.node.c_str(), value.key.c_str()) ||
-                    _niTransform->GetNodeTransformScaleMode(actor, false, female, value.node.c_str(), value.key.c_str()) != value.scaleMode) {
-                    return false;
-                }
+            if (expected.hasScale && (!it->hasScale || !NearlyEqual(it->scale, expected.scale))) {
+                return false;
+            }
+            if (expected.hasScaleMode && (!it->hasScaleMode || it->scaleMode != expected.scaleMode)) {
+                return false;
             }
         }
         return true;
