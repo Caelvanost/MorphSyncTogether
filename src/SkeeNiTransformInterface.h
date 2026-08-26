@@ -26,7 +26,6 @@ namespace MorphSyncTogether::SKEE
         class NodeVisitor
         {
         public:
-            virtual ~NodeVisitor() = default;
             virtual bool VisitPosition(const char* node, const char* key, Position& position) = 0;
             virtual bool VisitRotation(const char* node, const char* key, Rotation& rotation) = 0;
             virtual bool VisitScale(const char* node, const char* key, float scale) = 0;
