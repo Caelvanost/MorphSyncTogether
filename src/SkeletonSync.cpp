@@ -1,11 +1,13 @@
 #include "PCH.h"
 #include "SkeletonSync.h"
-#include "UdpTransport.h"
+
+#include <Windows.h>
 
 namespace MorphSyncTogether
 {
     namespace
     {
+        constexpr char kSkeletonChannel[] = "morphsync.skeleton.v1";
         constexpr auto kTickInterval = std::chrono::milliseconds(1000);
         constexpr auto kFullResendInterval = std::chrono::milliseconds(5000);
         constexpr std::size_t kMaxTransforms = 64;
@@ -48,12 +50,25 @@ namespace MorphSyncTogether
             return result;
         }
 
+        std::string SanitizeSender(std::string value)
+        {
+            for (auto& c : value) {
+                if (c == '|' || c == '\r' || c == '\n') {
+                    c = '_';
+                }
+            }
+            return value.empty() ? std::string("Player") : value;
+        }
+
         class TransformVisitor final : public SKEE::INiTransformInterface::NodeVisitor
         {
         public:
             explicit TransformVisitor(std::vector<SkeletonSync::TransformState>& values) : _values(values) {}
 
-            bool VisitPosition(const char* node, const char* key, Position& position) override
+            bool VisitPosition(
+                const char* node,
+                const char* key,
+                SKEE::INiTransformInterface::Position& position) override
             {
                 auto* value = Find(node, key);
                 if (!value || !std::isfinite(position.x) || !std::isfinite(position.y) || !std::isfinite(position.z)) {
@@ -64,7 +79,10 @@ namespace MorphSyncTogether
                 return false;
             }
 
-            bool VisitRotation(const char* node, const char* key, Rotation& rotation) override
+            bool VisitRotation(
+                const char* node,
+                const char* key,
+                SKEE::INiTransformInterface::Rotation& rotation) override
             {
                 auto* value = Find(node, key);
                 if (!value || !std::isfinite(rotation.heading) || !std::isfinite(rotation.attitude) || !std::isfinite(rotation.bank)) {
@@ -147,6 +165,24 @@ namespace MorphSyncTogether
         Stop();
     }
 
+    const char* SkeletonSync::ResultName(STRPM::Result result) noexcept
+    {
+        switch (result) {
+        case STRPM::Result::kOk: return "ok";
+        case STRPM::Result::kNotAvailable: return "not-available";
+        case STRPM::Result::kUnsupportedVersion: return "unsupported-version";
+        case STRPM::Result::kInvalidArgument: return "invalid-argument";
+        case STRPM::Result::kNotConnected: return "not-connected";
+        case STRPM::Result::kChannelAlreadyRegistered: return "channel-already-registered";
+        case STRPM::Result::kChannelNotRegistered: return "channel-not-registered";
+        case STRPM::Result::kPayloadTooLarge: return "payload-too-large";
+        case STRPM::Result::kRateLimited: return "rate-limited";
+        case STRPM::Result::kTransportError: return "transport-error";
+        case STRPM::Result::kTargetNotFound: return "target-not-found";
+        default: return "unknown";
+        }
+    }
+
     void SkeletonSync::Initialize()
     {
         if (_initialized) {
@@ -191,6 +227,80 @@ namespace MorphSyncTogether
         SKSE::log::info("MST SkeletonSync NiTransform interface READY version={}", version);
     }
 
+    bool SkeletonSync::StartTransport()
+    {
+        _module = GetModuleHandleW(L"STRPluginMessagingAPI.dll");
+        if (!_module) {
+            SKSE::log::critical("MST SkeletonSync STRPM unavailable: STRPluginMessagingAPI.dll not loaded");
+            return false;
+        }
+
+        const auto queryApi = reinterpret_cast<STRPM::QueryInterfaceFn>(
+            GetProcAddress(_module, STRPM::kQueryInterfaceExportName));
+        const auto queryResolver = reinterpret_cast<STRPM::QueryProxyResolverFn>(
+            GetProcAddress(_module, STRPM::kQueryProxyResolverExportName));
+        if (!queryApi || !queryResolver) {
+            SKSE::log::critical(
+                "MST SkeletonSync STRPM exports missing messaging={} resolver={}",
+                queryApi ? 1 : 0,
+                queryResolver ? 1 : 0);
+            return false;
+        }
+
+        auto result = queryApi(STRPM::kInterfaceVersion, &_api);
+        if (result != STRPM::Result::kOk || !_api) {
+            SKSE::log::critical("MST SkeletonSync STRPM messaging query failed result={}", ResultName(result));
+            _api = nullptr;
+            return false;
+        }
+
+        result = queryResolver(STRPM::kProxyResolverVersion, &_resolver);
+        if (result != STRPM::Result::kOk || !_resolver) {
+            SKSE::log::critical("MST SkeletonSync STRPM resolver query failed result={}", ResultName(result));
+            _api = nullptr;
+            _resolver = nullptr;
+            return false;
+        }
+
+        result = _api->registerChannel(kSkeletonChannel, &SkeletonSync::OnMessage, this, &_listener);
+        if (result != STRPM::Result::kOk) {
+            SKSE::log::critical(
+                "MST SkeletonSync registerChannel failed channel={} result={}",
+                kSkeletonChannel,
+                ResultName(result));
+            _api = nullptr;
+            _resolver = nullptr;
+            _listener = {};
+            return false;
+        }
+
+        SKSE::log::info(
+            "MST SkeletonSync STRPM READY channel={} messaging=v{} resolver=v{}",
+            kSkeletonChannel,
+            STRPM::kInterfaceVersion,
+            STRPM::kProxyResolverVersion);
+        return true;
+    }
+
+    void SkeletonSync::StopTransport()
+    {
+        if (_api && _listener.value != 0) {
+            const auto result = _api->unregisterChannel(_listener);
+            if (result != STRPM::Result::kOk) {
+                SKSE::log::warn("MST SkeletonSync unregisterChannel failed result={}", ResultName(result));
+            }
+        }
+
+        {
+            std::scoped_lock lock(_senderMutex);
+            _senderConnections.clear();
+        }
+        _listener = {};
+        _resolver = nullptr;
+        _api = nullptr;
+        _module = nullptr;
+    }
+
     void SkeletonSync::Start()
     {
         if (_running.load()) {
@@ -202,6 +312,11 @@ namespace MorphSyncTogether
         }
 
         _running.store(true);
+        if (!StartTransport()) {
+            _running.store(false);
+            return;
+        }
+
         _syncThread = std::jthread([this](std::stop_token token) {
             SyncLoop(token);
         });
@@ -216,6 +331,7 @@ namespace MorphSyncTogether
     void SkeletonSync::Stop()
     {
         if (!_running.exchange(false)) {
+            StopTransport();
             return;
         }
         if (_syncThread.joinable()) {
@@ -223,6 +339,7 @@ namespace MorphSyncTogether
             _syncThread.join();
         }
         _tickQueued.store(false);
+        StopTransport();
         SKSE::log::info("MST SkeletonSync stopped");
     }
 
@@ -268,7 +385,7 @@ namespace MorphSyncTogether
 
     void SkeletonSync::TickOnGameThread()
     {
-        if (!_running.load() || !_niTransform) {
+        if (!_running.load() || !_niTransform || !_api) {
             return;
         }
 
@@ -280,30 +397,18 @@ namespace MorphSyncTogether
                 const bool changed = snapshot->hash != _lastSentHash;
                 const bool resendDue = _lastSentAt.time_since_epoch().count() == 0 ||
                     now - _lastSentAt >= kFullResendInterval;
-                if ((changed || resendDue) && UdpTransport::GetSingleton().IsRunning()) {
-                    const auto data = SerializeTransforms(*snapshot);
-                    const auto packet = fmt::format(
-                        "SKEL|v=1|scale={:.9g}|hash={:016X}|count={}|data={}",
+                if (changed || resendDue) {
+                    SendSnapshot(*snapshot);
+                    _lastSentHash = snapshot->hash;
+                    _lastSentAt = now;
+                    SKSE::log::info(
+                        "MST SKEL TX player={:08X} scale={:.6f} transforms={} hash={:016X} changed={} resend={}",
+                        player->GetFormID(),
                         snapshot->actorScale,
-                        snapshot->hash,
                         snapshot->transforms.size(),
-                        data);
-                    if (packet.size() <= kMaxPacketBytes) {
-                        UdpTransport::GetSingleton().Send(packet);
-                        _lastSentHash = snapshot->hash;
-                        _lastSentAt = now;
-                        SKSE::log::info(
-                            "MST SKEL TX player={:08X} scale={:.6f} transforms={} hash={:016X} changed={} resend={} bytes={}",
-                            player->GetFormID(),
-                            snapshot->actorScale,
-                            snapshot->transforms.size(),
-                            snapshot->hash,
-                            changed ? 1 : 0,
-                            resendDue ? 1 : 0,
-                            packet.size());
-                    } else {
-                        SKSE::log::warn("MST SKEL TX dropped oversized packet bytes={} max={}", packet.size(), kMaxPacketBytes);
-                    }
+                        snapshot->hash,
+                        changed ? 1 : 0,
+                        resendDue ? 1 : 0);
                 }
             }
         }
@@ -319,6 +424,104 @@ namespace MorphSyncTogether
         for (const auto& sender : senders) {
             TryApplyRemote(sender, false);
         }
+    }
+
+    void SkeletonSync::SendSnapshot(const Snapshot& snapshot)
+    {
+        if (!_api) {
+            return;
+        }
+
+        const auto data = SerializeTransforms(snapshot);
+        const auto packet = fmt::format(
+            "SKEL|v=1|scale={:.9g}|hash={:016X}|count={}|data={}",
+            snapshot.actorScale,
+            snapshot.hash,
+            snapshot.transforms.size(),
+            data);
+        if (packet.size() > kMaxPacketBytes) {
+            SKSE::log::warn("MST SKEL TX dropped oversized packet bytes={} max={}", packet.size(), kMaxPacketBytes);
+            return;
+        }
+
+        const STRPM::Target target{ STRPM::TargetKind::kAllPlayers, 0, nullptr };
+        const auto result = _api->send(
+            kSkeletonChannel,
+            target,
+            packet.data(),
+            packet.size(),
+            STRPM::kMessageReliable | STRPM::kMessageOrdered);
+        if (result != STRPM::Result::kOk) {
+            SKSE::log::warn("MST SKEL TX failed bytes={} result={}", packet.size(), ResultName(result));
+        }
+    }
+
+    void STRPM_CALL SkeletonSync::OnMessage(const STRPM::Message* message, void* userData)
+    {
+        auto* self = static_cast<SkeletonSync*>(userData);
+        if (!self || !message || !message->data || message->size == 0 || !self->_running.load()) {
+            return;
+        }
+        self->HandleMessage(*message);
+    }
+
+    void SkeletonSync::HandleMessage(const STRPM::Message& message)
+    {
+        std::string sender = message.sender.displayName && *message.sender.displayName ?
+            message.sender.displayName : fmt::format("connection-{}", message.sender.connectionID);
+        sender = SanitizeSender(std::move(sender));
+
+        {
+            std::scoped_lock lock(_senderMutex);
+            _senderConnections[sender] = message.sender.connectionID;
+        }
+
+        const std::string payload(
+            static_cast<const char*>(message.data),
+            message.size);
+        if (!std::string_view(payload).starts_with("SKEL|")) {
+            return;
+        }
+
+        SKSE::log::trace(
+            "MST SKEL STRPM RX sender=\"{}\" connection={} bytes={} sequence={}",
+            sender,
+            message.sender.connectionID,
+            message.size,
+            message.sequence);
+
+        auto* tasks = SKSE::GetTaskInterface();
+        if (!tasks) {
+            SKSE::log::warn("MST SKEL RX dropped: SKSE task interface unavailable");
+            return;
+        }
+        tasks->AddTask([sender = std::move(sender), payload]() {
+            SkeletonSync::GetSingleton().HandlePacket(sender, payload);
+        });
+    }
+
+    RE::Actor* SkeletonSync::ResolveProxyBySender(std::string_view sender) const
+    {
+        if (!_resolver || sender.empty()) {
+            return nullptr;
+        }
+
+        STRPM::ConnectionID connectionID{};
+        {
+            std::scoped_lock lock(_senderMutex);
+            const auto it = _senderConnections.find(std::string(sender));
+            if (it == _senderConnections.end()) {
+                return nullptr;
+            }
+            connectionID = it->second;
+        }
+
+        STRPM::ProxyFormID formID{};
+        const auto result = _resolver->resolve(connectionID, &formID);
+        if (result != STRPM::Result::kOk || formID == 0) {
+            return nullptr;
+        }
+        return RE::TESForm::LookupByID<RE::Actor>(formID);
     }
 
     std::optional<SkeletonSync::Snapshot> SkeletonSync::CaptureSnapshot(RE::Actor* actor) const
@@ -377,14 +580,8 @@ namespace MorphSyncTogether
             std::scoped_lock lock(_remoteMutex);
             auto& state = _remoteStates[sender];
             repeated = state.everApplied && state.snapshot.hash == snapshot->hash;
-            const auto oldApplied = state.appliedKeys;
-            const auto oldActor = state.lastActorFormID;
             state.snapshot = *snapshot;
-            if (repeated) {
-                state.appliedKeys = oldApplied;
-                state.lastActorFormID = oldActor;
-                state.everApplied = true;
-            } else {
+            if (!repeated) {
                 state.everApplied = false;
             }
         }
@@ -411,7 +608,7 @@ namespace MorphSyncTogether
             state = it->second;
         }
 
-        auto* actor = UdpTransport::GetSingleton().ResolveProxyBySender(sender);
+        auto* actor = ResolveProxyBySender(sender);
         if (!actor) {
             if (force) {
                 SKSE::log::info("MST SKEL APPLY WAIT sender=\"{}\" reason=proxy-not-found", sender);
@@ -420,7 +617,10 @@ namespace MorphSyncTogether
         }
         if (!actor->Get3D()) {
             if (force) {
-                SKSE::log::info("MST SKEL APPLY WAIT sender=\"{}\" actor={:08X} reason=proxy-3d-not-loaded", sender, actor->GetFormID());
+                SKSE::log::info(
+                    "MST SKEL APPLY WAIT sender=\"{}\" actor={:08X} reason=proxy-3d-not-loaded",
+                    sender,
+                    actor->GetFormID());
             }
             return;
         }
@@ -500,7 +700,9 @@ namespace MorphSyncTogether
             bool entryChanged = false;
             if (value.hasPosition) {
                 const bool has = _niTransform->HasNodeTransformPosition(actor, false, female, value.node.c_str(), value.key.c_str());
-                const auto live = has ? _niTransform->GetNodeTransformPosition(actor, false, female, value.node.c_str(), value.key.c_str()) : SKEE::INiTransformInterface::Position{};
+                const auto live = has ?
+                    _niTransform->GetNodeTransformPosition(actor, false, female, value.node.c_str(), value.key.c_str()) :
+                    SKEE::INiTransformInterface::Position{};
                 if (!has || !NearlyEqual(live.x, value.position.x) || !NearlyEqual(live.y, value.position.y) || !NearlyEqual(live.z, value.position.z)) {
                     auto position = value.position;
                     _niTransform->AddNodeTransformPosition(actor, false, female, value.node.c_str(), value.key.c_str(), position);
@@ -509,7 +711,9 @@ namespace MorphSyncTogether
             }
             if (value.hasRotation) {
                 const bool has = _niTransform->HasNodeTransformRotation(actor, false, female, value.node.c_str(), value.key.c_str());
-                const auto live = has ? _niTransform->GetNodeTransformRotation(actor, false, female, value.node.c_str(), value.key.c_str()) : SKEE::INiTransformInterface::Rotation{};
+                const auto live = has ?
+                    _niTransform->GetNodeTransformRotation(actor, false, female, value.node.c_str(), value.key.c_str()) :
+                    SKEE::INiTransformInterface::Rotation{};
                 if (!has || !NearlyEqual(live.heading, value.rotation.heading) || !NearlyEqual(live.attitude, value.rotation.attitude) || !NearlyEqual(live.bank, value.rotation.bank)) {
                     auto rotation = value.rotation;
                     _niTransform->AddNodeTransformRotation(actor, false, female, value.node.c_str(), value.key.c_str(), rotation);
@@ -518,7 +722,8 @@ namespace MorphSyncTogether
             }
             if (value.hasScale) {
                 const bool has = _niTransform->HasNodeTransformScale(actor, false, female, value.node.c_str(), value.key.c_str());
-                const float live = has ? _niTransform->GetNodeTransformScale(actor, false, female, value.node.c_str(), value.key.c_str()) : 1.0F;
+                const float live = has ?
+                    _niTransform->GetNodeTransformScale(actor, false, female, value.node.c_str(), value.key.c_str()) : 1.0F;
                 if (!has || !NearlyEqual(live, value.scale)) {
                     _niTransform->AddNodeTransformScale(actor, false, female, value.node.c_str(), value.key.c_str(), value.scale);
                     entryChanged = true;
@@ -526,7 +731,8 @@ namespace MorphSyncTogether
             }
             if (value.hasScaleMode) {
                 const bool has = _niTransform->HasNodeTransformScaleMode(actor, false, female, value.node.c_str(), value.key.c_str());
-                const auto live = has ? _niTransform->GetNodeTransformScaleMode(actor, false, female, value.node.c_str(), value.key.c_str()) : 0U;
+                const auto live = has ?
+                    _niTransform->GetNodeTransformScaleMode(actor, false, female, value.node.c_str(), value.key.c_str()) : 0U;
                 if (!has || live != value.scaleMode) {
                     _niTransform->AddNodeTransformScaleMode(actor, false, female, value.node.c_str(), value.key.c_str(), value.scaleMode);
                     entryChanged = true;
@@ -598,7 +804,9 @@ namespace MorphSyncTogether
             return true;
         }
 
-        if (ContainsAny(lower, { "weapon", "sword", "dagger", "axe", "mace", "bow", "quiver", "shield", "staff", "camera", "cam", "scabbard", "bolt", "arrow" })) {
+        if (ContainsAny(lower, {
+                "weapon", "sword", "dagger", "axe", "mace", "bow", "quiver", "shield", "staff",
+                "camera", "cam", "scabbard", "bolt", "arrow" })) {
             return false;
         }
 
