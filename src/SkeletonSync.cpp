@@ -8,8 +8,6 @@ namespace MorphSyncTogether
     namespace
     {
         constexpr char kSkeletonChannel[] = "morphsync.skeleton.v1";
-        constexpr auto kTickInterval = std::chrono::milliseconds(1000);
-        constexpr auto kFullResendInterval = std::chrono::milliseconds(5000);
         constexpr std::size_t kMaxTransforms = 64;
         constexpr std::size_t kMaxNameBytes = 96;
         constexpr std::size_t kMaxPacketBytes = 20 * 1024;
@@ -306,6 +304,15 @@ namespace MorphSyncTogether
         if (_running.load()) {
             return;
         }
+
+        _config = Config::Load();
+        if (!_config.networkEnabled || !_config.skeletonSyncEnabled) {
+            SKSE::log::info(
+                "MST SkeletonSync disabled network={} enabled={}",
+                _config.networkEnabled ? 1 : 0,
+                _config.skeletonSyncEnabled ? 1 : 0);
+            return;
+        }
         if (!_niTransform) {
             SKSE::log::warn("MST SkeletonSync not started: NiTransform unavailable");
             return;
@@ -322,8 +329,8 @@ namespace MorphSyncTogether
         });
         SKSE::log::info(
             "MST SkeletonSync started interval={}ms resend={}ms actorScale=1 niTransform=1 maxTransforms={}",
-            kTickInterval.count(),
-            kFullResendInterval.count(),
+            _config.skeletonSyncIntervalMs,
+            _config.skeletonFullResendMs,
             kMaxTransforms);
         QueueTick();
     }
@@ -358,9 +365,11 @@ namespace MorphSyncTogether
     {
         while (!stopToken.stop_requested() && _running.load()) {
             QueueTick();
+
+            const auto total = std::chrono::milliseconds(_config.skeletonSyncIntervalMs);
             constexpr auto slice = std::chrono::milliseconds(100);
             auto slept = std::chrono::milliseconds(0);
-            while (slept < kTickInterval && !stopToken.stop_requested() && _running.load()) {
+            while (slept < total && !stopToken.stop_requested() && _running.load()) {
                 std::this_thread::sleep_for(slice);
                 slept += slice;
             }
@@ -396,19 +405,20 @@ namespace MorphSyncTogether
             if (snapshot) {
                 const bool changed = snapshot->hash != _lastSentHash;
                 const bool resendDue = _lastSentAt.time_since_epoch().count() == 0 ||
-                    now - _lastSentAt >= kFullResendInterval;
+                    now - _lastSentAt >= std::chrono::milliseconds(_config.skeletonFullResendMs);
                 if (changed || resendDue) {
-                    SendSnapshot(*snapshot);
-                    _lastSentHash = snapshot->hash;
-                    _lastSentAt = now;
-                    SKSE::log::info(
-                        "MST SKEL TX player={:08X} scale={:.6f} transforms={} hash={:016X} changed={} resend={}",
-                        player->GetFormID(),
-                        snapshot->actorScale,
-                        snapshot->transforms.size(),
-                        snapshot->hash,
-                        changed ? 1 : 0,
-                        resendDue ? 1 : 0);
+                    if (SendSnapshot(*snapshot)) {
+                        _lastSentHash = snapshot->hash;
+                        _lastSentAt = now;
+                        SKSE::log::info(
+                            "MST SKEL TX player={:08X} scale={:.6f} transforms={} hash={:016X} changed={} resend={}",
+                            player->GetFormID(),
+                            snapshot->actorScale,
+                            snapshot->transforms.size(),
+                            snapshot->hash,
+                            changed ? 1 : 0,
+                            resendDue ? 1 : 0);
+                    }
                 }
             }
         }
@@ -426,10 +436,10 @@ namespace MorphSyncTogether
         }
     }
 
-    void SkeletonSync::SendSnapshot(const Snapshot& snapshot)
+    bool SkeletonSync::SendSnapshot(const Snapshot& snapshot)
     {
         if (!_api) {
-            return;
+            return false;
         }
 
         const auto data = SerializeTransforms(snapshot);
@@ -441,7 +451,7 @@ namespace MorphSyncTogether
             data);
         if (packet.size() > kMaxPacketBytes) {
             SKSE::log::warn("MST SKEL TX dropped oversized packet bytes={} max={}", packet.size(), kMaxPacketBytes);
-            return;
+            return false;
         }
 
         const STRPM::Target target{ STRPM::TargetKind::kAllPlayers, 0, nullptr };
@@ -453,7 +463,9 @@ namespace MorphSyncTogether
             STRPM::kMessageReliable | STRPM::kMessageOrdered);
         if (result != STRPM::Result::kOk) {
             SKSE::log::warn("MST SKEL TX failed bytes={} result={}", packet.size(), ResultName(result));
+            return false;
         }
+        return true;
     }
 
     void STRPM_CALL SkeletonSync::OnMessage(const STRPM::Message* message, void* userData)
