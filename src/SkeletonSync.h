@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PCH.h"
+#include "Config.h"
 #include "SkeeNiTransformInterface.h"
 #include "STRPMCompat.h"
 
@@ -70,7 +71,7 @@ namespace MorphSyncTogether
 
         bool StartTransport();
         void StopTransport();
-        void SendSnapshot(const Snapshot& snapshot);
+        bool SendSnapshot(const Snapshot& snapshot);
         RE::Actor* ResolveProxyBySender(std::string_view sender) const;
         static void STRPM_CALL OnMessage(const STRPM::Message* message, void* userData);
         void HandleMessage(const STRPM::Message& message);
@@ -84,6 +85,7 @@ namespace MorphSyncTogether
         static std::optional<std::string> HexDecode(std::string_view value);
         static std::optional<std::string> ReadField(std::string_view payload, std::string_view key);
 
+        Config _config{};
         SKEE::INiTransformInterface* _niTransform{ nullptr };
         bool _initialized{ false };
 
