@@ -2,6 +2,7 @@
 
 #include "PCH.h"
 #include "SkeeNiTransformInterface.h"
+#include "STRPMCompat.h"
 
 namespace MorphSyncTogether
 {
@@ -15,12 +16,6 @@ namespace MorphSyncTogether
         void Stop();
         void Reset();
 
-        // Receives payload beginning with SKEL, e.g. SKEL|v=1|scale=1|...
-        // Must run on Skyrim's game thread.
-        void HandlePacket(std::string_view sender, std::string_view payload);
-
-        // Public only so the ABI visitor implementation in SkeletonSync.cpp can
-        // build filtered snapshots without exposing RaceMenu internals elsewhere.
         struct TransformState
         {
             std::string node;
@@ -73,6 +68,14 @@ namespace MorphSyncTogether
         bool ApplySnapshot(RE::Actor* actor, RemoteState& state, bool& changed);
         bool SnapshotMatches(RE::Actor* actor, const Snapshot& snapshot) const;
 
+        bool StartTransport();
+        void StopTransport();
+        void SendSnapshot(const Snapshot& snapshot);
+        RE::Actor* ResolveProxyBySender(std::string_view sender) const;
+        static void STRPM_CALL OnMessage(const STRPM::Message* message, void* userData);
+        void HandleMessage(const STRPM::Message& message);
+        static const char* ResultName(STRPM::Result result) noexcept;
+
         static bool NearlyEqual(float lhs, float rhs, float epsilon = 0.0001F);
         static std::uint64_t HashSnapshot(const Snapshot& snapshot);
         static std::string SerializeTransforms(const Snapshot& snapshot);
@@ -83,6 +86,13 @@ namespace MorphSyncTogether
 
         SKEE::INiTransformInterface* _niTransform{ nullptr };
         bool _initialized{ false };
+
+        const STRPM::Interface* _api{ nullptr };
+        const STRPM::ProxyResolverInterface* _resolver{ nullptr };
+        STRPM::ListenerHandle _listener{};
+        HMODULE _module{ nullptr };
+        mutable std::mutex _senderMutex;
+        std::unordered_map<std::string, STRPM::ConnectionID> _senderConnections;
 
         std::jthread _syncThread;
         std::atomic_bool _running{ false };
